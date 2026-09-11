@@ -24,8 +24,8 @@ object Waifu2x {
     const val REAL_ESRGAN_STYLE_PHOTO = 1
 
     // Bump when bundled model assets change so existing installations refresh their cache.
-    private const val BUNDLED_MODEL_CACHE_VERSION = "14"
-    private const val QNN_CONTEXT_CACHE_VERSION = "17"
+    private const val BUNDLED_MODEL_CACHE_VERSION = "15"
+    private const val QNN_CONTEXT_CACHE_VERSION = "18"
 
     @Volatile private var isInitialized = false
 

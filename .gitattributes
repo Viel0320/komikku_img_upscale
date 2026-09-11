@@ -10,6 +10,12 @@
 # Native static libraries - CRLF normalization corrupts ar archives
 *.a binary
 
+# ML model weights, QNN contexts and native libraries - CRLF normalization
+# shifts bytes and silently corrupts model inference (black-screen output)
+*.bin binary
+*.so binary
+*.dlc binary
+
 # Images
 *.webp binary
 *.png binary
