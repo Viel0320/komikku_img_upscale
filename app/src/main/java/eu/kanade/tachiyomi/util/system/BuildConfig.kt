@@ -14,7 +14,9 @@ val isDebugBuildType: Boolean
     inline get() = BuildConfig.BUILD_TYPE == "debug"
 
 val isPreviewBuildType: Boolean
-    inline get() = BuildConfig.BUILD_TYPE == "preview"
+    // KMK -->
+    inline get() = BuildConfig.BUILD_TYPE == "preview" || BuildConfig.BUILD_TYPE == "viel"
+// KMK <--
 
 val isReleaseBuildType: Boolean
     inline get() = BuildConfig.BUILD_TYPE == "release"

@@ -120,6 +120,19 @@ android {
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         }
+        // KMK -->
+        // Same as `preview`, but shipped under its own application id so both can be
+        // installed side by side.
+        create("viel") {
+            initWith(getByName("preview"))
+
+            applicationIdSuffix = ".viel"
+
+            matchingFallbacks.addAll(commonMatchingFallbacks)
+
+            buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
+        }
+        // KMK <--
         create("benchmark") {
             initWith(release)
 
@@ -136,6 +149,9 @@ android {
 
     sourceSets {
         getByName("preview").res.srcDirs("src/beta/res")
+        // KMK -->
+        getByName("viel").res.srcDirs("src/beta/res")
+        // KMK <--
         getByName("benchmark").res.srcDirs("src/debug/res")
     }
 
