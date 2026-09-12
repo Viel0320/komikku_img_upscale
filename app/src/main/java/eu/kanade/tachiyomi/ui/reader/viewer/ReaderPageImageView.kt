@@ -62,6 +62,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -99,7 +100,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         Injekt.get<BasePreferences>().alwaysDecodeLongStripWithSSIV().get()
     }
 
-    private val viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // KMK --> recreated on every attach so its collectors never outlive the view
+    private var viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private var preferenceJobs: List<Job> = emptyList()
+    // KMK <--
 
     private var isSettingProcessedImage = false // Flag to prevent recursive processing
 
@@ -196,47 +201,65 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     init {
         // KMK -->
-        // Listen for performance mode changes to update native throttling immediately
-        // Use launchIO to avoid blocking UI thread waiting for native lock if processing is active
-        viewScope.launchIO {
-            // Check cache size and trim if needed (debounced to run at most once every 10 mins)
-            ImageEnhancementCache.checkAndTrim(context)
-
-            preferences.realCuganPerformanceMode().changes()
-                .collect { mode ->
-                    val sleepMs = when (mode) {
-                        0 -> 0
-                        1 -> 5
-                        2 -> 15
-                        else -> 0
-                    }
-                    Waifu2x.updatePerformance(sleepMs, tileSize)
-                }
-        }
-
-        viewScope.launchIO {
-            preferences.realCuganTileSize().changes()
-                .collect { size ->
-                    Waifu2x.updatePerformance(tileSleepMs, size.coerceAtLeast(32))
-                }
-        }
-
-        viewScope.launchIO {
-            preferences.realCuganShowStatus().changes()
-                .collect { enabled ->
-                    withUIContext {
-                        if (!enabled) {
-                            statusView.isVisible = false
-                        } else if (lastStatusText != null) {
-                            statusView.text = lastStatusText
-                            statusView.isVisible = true
-                            statusView.bringToFront()
-                        }
-                    }
-                }
-        }
+        // Preference collectors are registered in onAttachedToWindow and cancelled in
+        // onDetachedFromWindow so they cannot leak for detached/recycled views, and cost
+        // nothing while the enhancement feature is disabled.
         // KMK <--
     }
+
+    // KMK -->
+    private fun startPreferenceCollectors() {
+        preferenceJobs = listOf(
+            viewScope.launchIO {
+                // Check cache size and trim if needed (debounced to run at most once every 10 mins)
+                ImageEnhancementCache.checkAndTrim(context)
+
+                // Listen for performance mode changes to update native throttling immediately;
+                // use launchIO to avoid blocking the UI thread on the native lock while processing
+                preferences.realCuganPerformanceMode().changes()
+                    .collect { mode ->
+                        val sleepMs = when (mode) {
+                            0 -> 0
+                            1 -> 5
+                            2 -> 15
+                            else -> 0
+                        }
+                        Waifu2x.updatePerformance(sleepMs, tileSize)
+                    }
+            },
+            viewScope.launchIO {
+                preferences.realCuganTileSize().changes()
+                    .collect { size ->
+                        Waifu2x.updatePerformance(tileSleepMs, size.coerceAtLeast(32))
+                    }
+            },
+            viewScope.launchIO {
+                preferences.realCuganShowStatus().changes()
+                    .collect { enabled ->
+                        withUIContext {
+                            if (!enabled) {
+                                statusView.isVisible = false
+                            } else if (lastStatusText != null) {
+                                statusView.text = lastStatusText
+                                statusView.isVisible = true
+                                statusView.bringToFront()
+                            }
+                        }
+                    }
+            },
+        )
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // KMK --> reuse the initial scope on first attach; only rebuild it once the previous
+        // one was cancelled, so the declared instance can never be orphaned.
+        if (viewScope.coroutineContext[Job]?.isActive != true) {
+            viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        }
+        startPreferenceCollectors()
+    }
+    // KMK <--
 
     // KMK -->
     private val statusView: TextView by lazy {
@@ -1379,6 +1402,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
         isSettingProcessedImage = false
         currentLoadedUri = null
         clearProcessedSwapView()
+
+        preferenceJobs.forEach { it.cancel() }
+        preferenceJobs = emptyList()
+        viewScope.cancel()
     }
     // KMK <--
 
