@@ -3,11 +3,9 @@ package eu.kanade.tachiyomi.util.waifu2x
 import android.content.Context
 import android.graphics.Bitmap
 import eu.kanade.tachiyomi.util.qnn.QualcommHtp
-import java.io.BufferedInputStream
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.ZipInputStream
 
 /**
  * Waifu2x image upscaler using ncnn.
@@ -24,7 +22,7 @@ object Waifu2x {
     const val REAL_ESRGAN_STYLE_PHOTO = 1
 
     // Bump when bundled model assets change so existing installations refresh their cache.
-    private const val BUNDLED_MODEL_CACHE_VERSION = "15"
+    const val BUNDLED_MODEL_CACHE_VERSION = "16"
     private const val QNN_CONTEXT_CACHE_VERSION = "18"
 
     @Volatile private var isInitialized = false
@@ -72,25 +70,6 @@ object Waifu2x {
             }
             isInitialized
         }
-    }
-
-    /**
-     * Process a bitmap image with Waifu2x upscaling.
-     *
-     * @param input Input bitmap (will not be modified)
-     * @return Upscaled bitmap, or null if processing failed
-     */
-    fun process(input: Bitmap, id: Int = -1): Bitmap? {
-        if (!isInitialized) return null
-
-        // Ensure input is in ARGB_8888 format
-        val argbBitmap = if (input.config != Bitmap.Config.ARGB_8888) {
-            input.copy(Bitmap.Config.ARGB_8888, false)
-        } else {
-            input
-        }
-
-        return nativeProcess(argbBitmap, id)
     }
 
     // Track current config to detect changes (excludes tileSleepMs since that doesn't require model reload)
@@ -538,8 +517,6 @@ object Waifu2x {
         return processBitmapHelper(input, id)
     }
 
-    @Volatile var processingId: Int = -1
-
     private fun processBitmapHelper(input: Bitmap, id: Int): Bitmap? {
         if (input.isRecycled) return null
 
@@ -553,12 +530,10 @@ object Waifu2x {
             input
         } ?: return null
 
-        processingId = id
         try {
             val result = nativeProcessRealCugan(argbBitmap, id)
             return if (result === argbBitmap) null else result
         } finally {
-            processingId = -1
             if (argbBitmap !== input) {
                 argbBitmap.recycle()
             }
@@ -710,6 +685,11 @@ object Waifu2x {
         }
     }
 
+    // KMK -->
+    // Komikku: every model ships in assets, so a missing model is a packaging error —
+    // fail fast instead of blocking the decode pipeline on a network download.
+    // @Synchronized guards concurrent extraction from the different init entry points.
+    @Synchronized
     private fun extractModelsToCache(context: Context, assetPath: String): String? {
         return try {
             val cacheDir = File(context.cacheDir, assetPath)
@@ -738,14 +718,7 @@ object Waifu2x {
             }
 
             if (!cacheDir.hasNcnnModels()) {
-                downloadReleaseModels(assetPath, cacheDir)
-            }
-
-            if (!cacheDir.hasNcnnModels()) {
-                downloadDirectModels(assetPath, cacheDir)
-            }
-
-            if (!cacheDir.hasNcnnModels()) {
+                logcat(LogPriority.ERROR) { "Waifu2x: Bundled model assets missing or incomplete: $assetPath" }
                 return null
             }
 
@@ -755,136 +728,7 @@ object Waifu2x {
             null
         }
     }
-
-    private data class ModelReleaseSource(
-        val url: String,
-        val entryPrefix: String,
-        val stripPrefix: String = "",
-    )
-
-    private data class DirectModelSource(
-        val baseUrl: String,
-        val files: List<String>,
-    )
-
-    private fun releaseSourceFor(assetPath: String): ModelReleaseSource? {
-        return when (assetPath) {
-            "realcugan-models" -> ModelReleaseSource(
-                url = "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/20220728/realcugan-ncnn-vulkan-20220728-ubuntu.zip",
-                entryPrefix = "realcugan-ncnn-vulkan-20220728-ubuntu/models-se/",
-            )
-            "realcugan-pro-models" -> ModelReleaseSource(
-                url = "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/20220728/realcugan-ncnn-vulkan-20220728-ubuntu.zip",
-                entryPrefix = "realcugan-ncnn-vulkan-20220728-ubuntu/models-pro/",
-            )
-            "waifu2x-models-nose" -> ModelReleaseSource(
-                url = "https://github.com/nihui/realcugan-ncnn-vulkan/releases/download/20220728/realcugan-ncnn-vulkan-20220728-ubuntu.zip",
-                entryPrefix = "realcugan-ncnn-vulkan-20220728-ubuntu/models-nose/",
-            )
-            "waifu2x-models" -> ModelReleaseSource(
-                url = "https://github.com/nihui/waifu2x-ncnn-vulkan/releases/download/20250915/waifu2x-ncnn-vulkan-20250915-linux.zip",
-                entryPrefix = "waifu2x-ncnn-vulkan-20250915-linux/models-cunet/",
-            )
-            "waifu2x-models-upconv7" -> ModelReleaseSource(
-                url = "https://github.com/nihui/waifu2x-ncnn-vulkan/releases/download/20250915/waifu2x-ncnn-vulkan-20250915-linux.zip",
-                entryPrefix = "waifu2x-ncnn-vulkan-20250915-linux/models-upconv_7_anime_style_art_rgb/",
-            )
-            "realesrgan-models/v3-anime" -> ModelReleaseSource(
-                url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-ubuntu.zip",
-                entryPrefix = "models/realesr-animevideov3-",
-                stripPrefix = "realesr-animevideov3-",
-            )
-            else -> null
-        }
-    }
-
-    private fun directSourceFor(assetPath: String): DirectModelSource? {
-        val w2xExStem = assetPath.removePrefix("w2xex-esrgan/").takeIf { it != assetPath }
-        if (w2xExStem != null) {
-            val supported = setOf(
-                "Universal-Fast-W2xEX",
-                "Omni-MiniV2-W2xEX",
-                "Photo-Small-W2xEX",
-            )
-            if (w2xExStem !in supported) return null
-
-            return DirectModelSource(
-                baseUrl = "https://huggingface.co/randomblock1/W2xEX-ESRGAN/resolve/main",
-                files = listOf("$w2xExStem.param", "$w2xExStem.bin"),
-            )
-        }
-
-        val animeJaNaiStem = assetPath.removePrefix("animejanai-ncnn-vulkan/").takeIf { it != assetPath }
-        if (animeJaNaiStem == "animejanai-v2-ultra-compact-x2") {
-            return DirectModelSource(
-                baseUrl = "https://raw.githubusercontent.com/Justin62628/animejanai-ncnn-vulkan/main/models/$animeJaNaiStem",
-                files = listOf("$animeJaNaiStem.param", "$animeJaNaiStem.bin"),
-            )
-        }
-
-        return null
-    }
-
-    private fun downloadReleaseModels(assetPath: String, cacheDir: File) {
-        val source = releaseSourceFor(assetPath) ?: return
-        val connection = (URL(source.url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 60_000
-            instanceFollowRedirects = true
-        }
-        try {
-            ZipInputStream(BufferedInputStream(connection.inputStream)).use { zip ->
-                while (true) {
-                    val entry = zip.nextEntry ?: break
-                    if (entry.isDirectory || !entry.name.startsWith(source.entryPrefix)) {
-                        zip.closeEntry()
-                        continue
-                    }
-                    val rawName = entry.name.substringAfterLast('/')
-                    if (!rawName.endsWith(".param") && !rawName.endsWith(".bin")) {
-                        zip.closeEntry()
-                        continue
-                    }
-                    val filename = rawName.removePrefix(source.stripPrefix)
-                    val outFile = File(cacheDir, filename)
-                    outFile.outputStream().use { output ->
-                        zip.copyTo(output)
-                    }
-                    zip.closeEntry()
-                }
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    private fun downloadDirectModels(assetPath: String, cacheDir: File) {
-        val source = directSourceFor(assetPath) ?: return
-        source.files.forEach { filename ->
-            val outFile = File(cacheDir, filename)
-            if (outFile.exists() && outFile.length() > 0L) return@forEach
-
-            val tempFile = File(cacheDir, "$filename.tmp")
-            val url = "${source.baseUrl}/$filename"
-            val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15_000
-                readTimeout = 120_000
-                instanceFollowRedirects = true
-            }
-            try {
-                BufferedInputStream(connection.inputStream).use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                if (!tempFile.renameTo(outFile)) {
-                    tempFile.delete()
-                }
-            } finally {
-                connection.disconnect()
-            }
-        }
-    }
+    // KMK <--
 
     private fun File.hasNcnnModels(): Boolean {
         val files = listFiles().orEmpty()
@@ -1004,7 +848,6 @@ object Waifu2x {
         fp16Arithmetic: Boolean,
         padding: Int,
     ): Boolean
-    private external fun nativeProcess(input: Bitmap, id: Int): Bitmap?
     private external fun nativeDestroy()
     private external fun nativeAbortProcessing()
     private external fun nativeClearAbortProcessing()
