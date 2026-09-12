@@ -5,6 +5,7 @@ import android.os.Build
 import eu.kanade.tachiyomi.BuildConfig
 import eu.kanade.tachiyomi.util.system.isFossBuildType
 import eu.kanade.tachiyomi.util.system.isPreviewBuildType
+import eu.kanade.tachiyomi.util.system.isVielBuildType
 import exh.source.ExhPreferences
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -95,12 +96,22 @@ class AppUpdateChecker(
 
 val GITHUB_REPO: String by lazy { getGithubRepo() }
 
+// KMK -->
+/**
+ * Repository that hosts the releases of the `viel` build, which is published by the
+ * `Viel Builder` workflow (`.github/workflows/build_viel.yml`) of this fork.
+ * Keep in sync with the repository the workflow runs in.
+ */
+const val VIEL_REPO = "Viel0320/komikku_img_upscale"
+
 fun getGithubRepo(peekIntoPreview: Boolean = false): String =
-    if (isPreviewBuildType || peekIntoPreview) {
-        "komikku-app/komikku-preview"
-    } else {
-        "komikku-app/komikku"
+    when {
+        // `viel` builds are updated from this fork's releases.
+        isVielBuildType -> VIEL_REPO
+        isPreviewBuildType || peekIntoPreview -> "komikku-app/komikku-preview"
+        else -> "komikku-app/komikku"
     }
+// KMK <--
 
 val RELEASE_TAG: String by lazy { getReleaseTag() }
 
