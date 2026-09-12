@@ -19,12 +19,12 @@
 | `app/src/main/cpp/CMakeLists.txt` | ✏️ 适配 | 剔除 spatial/depth 源文件;QNN 只查头文件不查 SDK lib(运行库来自 AAR) |
 | `third_party/ncnn-20260113-android-vulkan/`(99MB) | ✅ 原样 | 与上游同版本同布局;`local.properties`/`-PncnnSdkDir`/环境变量均可覆盖 |
 | `third_party/qnn-include/` + LICENSE + README | 🆕 替代方案 | 上游用本地 QAIRT SDK 头文件;本分支 vendor 自 `qualcomm/geniex-qairt-plugin`(BSD-3-Clause,QNN C API 2.27,运行时 2.49 向后兼容)。**头文件无法从 release APK 获得** |
-| `util/waifu2x/Waifu2x.kt` | ✅ 原样 | 模型生命周期、assets 解压、GitHub/HF 按需下载、QNN 初始化 |
+| `util/waifu2x/Waifu2x.kt` | ✏️ 适配 | 模型生命周期、assets 解压、QNN 初始化;**运行时 GitHub/HF 按需下载回退已移除**,模型全部捆绑、缺失即快速失败(`BUNDLED_MODEL_CACHE_VERSION` 随捆绑资产变更递增) |
 | `util/waifu2x/ImageEnhancer.kt` | ✅ 原样 | 优先级队列(可见页 3/副页 2/提升 1/预载 0 + 距离 + FIFO)、抢占、代际取消 |
-| `util/waifu2x/ImageEnhancementCache.kt` | ✅ 原样 | 磁盘缓存(3GB 上限)、configHash、skip 标记、透明图拒收 |
+| `util/waifu2x/ImageEnhancementCache.kt` | ✏️ 适配 | 磁盘缓存(3GB 上限)、configHash、skip 标记、透明图拒收;**新增 `saveToCacheSync`(保留所有权),移除无调用者的异步保存路径**(见 §3.6) |
 | `util/qnn/QualcommHtp.kt` | ✅ 原样 | HTP 架构探测(JNI),spatial 注释残留无碍 |
 | `util/image/ImageFilter.kt`(ink 滤镜) | ❌ 跳过 | 见 §2 |
-| `assets/` 模型(realcugan SE/Pro、realesrgan、waifu2x、nose、upconv7、span、sudo、anime4k) | ✅ 原样 | ~90MB;animejanai 仅 ATTRIBUTION(按需下载,与上游一致) |
+| `assets/` 模型(realcugan SE/Pro、realesrgan、waifu2x、nose、upconv7、span、sudo、anime4k) | ✏️ 适配 | 模型 ~87MB(qnn-contexts 另计 437MB,共 526MB);新增 w2xex-esrgan 三模型与 animejanai x2,删除未引用的 `realesrgan-models/anime/x4`;来源/许可证/校验和见 `docs/third-party-upscale-assets.md` 与 `docs/upscale-assets-sha256sums.txt` |
 | `assets/qnn-contexts/`(150 个,437MB,v69–v81) | ✅ 原样 | 从上游 release APK 提取,字节级一致;上游是构建期从 `qnn.context.dir` stage,本分支直接入库 |
 | `app/src/main/jniLibs/arm64-v8a/libQnnModelDlc.so` | ✅ 原样 | 从上游 release APK 提取;已验证 `libQnnHtp.so` 不依赖它(仅 DLC 模型路径用),对齐上游打包 |
 | i18n:37 个 `reader_*` 字符串 | ✏️ 适配 | **KMR / i18n-kmk base**(上游是 MR / i18n),符合本仓库 i18n 规范;Weblate 可译 |
@@ -35,7 +35,7 @@
 |---|---|---|---|
 | `app/build.gradle.kts` | cmake 接入、NCNN/QNN 路径解析、QNN staging 任务、AAR 依赖、ndkVersion | ✏️ 适配 | 无 QNN staging 任务(上下文直接入库);`ndkVersion` 不钉死(用 AGP 默认,本机 27 自动装);AAR 依赖同上游 |
 | `data/coil/Utils.kt` | +5 个 Coil 参数(enhanced/mangaId/chapterId/pageIndex/pageVariant) | ✅ 原样 | KMK 块 |
-| `data/coil/TachiyomiImageDecoder.kt` | 重写:缓存优先 → 预缩放 → 推理 → 纹理上限 → 回写缓存;BitmapFactory 兜底;`DecodeResult?` 软失败 | ✅ 原样 + 保留 SY | 保留 komikku 的 SY 封面归档(CbzCrypto)两条路径;ink 滤镜调用点未移植 |
+| `data/coil/TachiyomiImageDecoder.kt` | 重写:缓存优先 → 预缩放 → 推理 → 纹理上限 → 回写缓存;BitmapFactory 兜底;`DecodeResult?` 软失败 | ✏️ 适配 + 保留 SY | 保留 komikku 的 SY 封面归档(CbzCrypto)两条路径;ink 滤镜调用点未移植。**P1 修复**:移除全局解码串行、推理移至专用调度器、直接返回增强结果(见 §3.5/§3.6) |
 | `ui/reader/model/ReaderPage.kt` | +`enhancementStream`/`enhancementKeySuffix` | ✏️ 适配 | 放在**类体**而非构造参数(构造参数会破坏既有尾随 lambda 调用点,上游 mihon 无此调用模式) |
 | `ui/reader/setting/ReaderPreferences.kt` | +15 个 `realCugan*` 偏好 | ✅ 原样 | 键名与上游完全一致(升级用户偏好可迁移);未移植其遗留 `waifu2xEnabled`/`inkFilter*`/`realCuganProEnabled`(无 UI 引用) |
 | `presentation/reader/settings/ColorFilterPage.kt` | +增强设置段 | ✏️ 适配 | `SettingsChipRow` 传 `StringResource`(komikku 组件签名与上游不同);字符串 KMR |
@@ -43,7 +43,7 @@
 | `ui/reader/ReaderViewModel.kt` | `toggleImageEnhancement()`、`ImageEnhancer.reset()` | ✅ 原样 | reset 挂在 `init()`(komikku 的初始化入口与上游不同) |
 | `loader/HttpPageLoader.kt` | preloadSize 联动 + internalLoadPage 增强流替换 | ✏️ 适配 | **本分支修正**:增强关闭时回落 komikku 的 `preloadSize()`(SY 偏好)而非上游的常量 4,避免关闭功能时行为回归 |
 | `loader/DownloadPageLoader.kt` | loadPage 时触发增强 | ✅ 原样 | |
-| `viewer/ReaderPageImageView.kt` | 485→1396 行:状态角标、增强图轮询、交叉淡入交换、缓存自愈、onPageSelected 剪枝 | ✏️ 部分移植 + 1 处修正 | 保留 komikku 的 KMK 缩放特性(disableZoomIn/doubleTapZoom/landscapeZoomScaleType)与 webtoon 长条 Coil 解码路径(并在该路径也接入增强);`enhancementDisplayEnabled` 为本分支新增开关;**修复 SSIV recycle 竞态**(§3.1) |
+| `viewer/ReaderPageImageView.kt` | 485→1396 行:状态角标、增强图轮询、交叉淡入交换、缓存自愈、onPageSelected 剪枝 | ✏️ 部分移植 + 2 处修正 | 保留 komikku 的 KMK 缩放特性(disableZoomIn/doubleTapZoom/landscapeZoomScaleType)与 webtoon 长条 Coil 解码路径(并在该路径也接入增强);`enhancementDisplayEnabled` 为本分支新增开关;**修复 SSIV recycle 竞态**(§3.1)、**偏好 collector 绑定 attach/detach 生命周期**(§3.4) |
 | `viewer/pager/PagerViewer.kt` | offscreenPageLimit 联动、destroy 时 cancelAll、hasSplitPage | ✏️ 适配 | `else 1` 保留 komikku 默认(上游 mihon 为 2);新增 `hasSplitPage` |
 | `viewer/pager/PagerConfig.kt` | 16 个偏好变更监听(cancelAll + 清缓存 + 刷 adapter) | ✅ 原样 | |
 | `viewer/pager/PagerPageHolder.kt` | 增强上下文绑定、缓存优先显示、拆页变体 | ✏️ 适配(差异最大) | 见 §2 拆页设计 |
@@ -74,6 +74,24 @@
 ### 3.3 [已修] 暂存区混入无关文件
 `qnncheck/`(检查 AAR 的临时解包)曾误入 index,已移除;`gradle.properties`(+tooling.parallel)是用户在会话前的既有改动,**不属于本分支,提交时必须排除**。
 
+### 3.4 [已修] 偏好 collector 泄漏(与视图生命周期解耦)
+三个偏好 collector 原在 `ReaderPageImageView.init` 注册且挂在永不取消的 scope 上;pager/webtoon 的 RecyclerView 每创建一个页面视图都会新增一批常驻 collector(并持续读写已 detach 视图的 `statusView`),随滚动累积。修复:collector 改在 `onAttachedToWindow` 启动、`onDetachedFromWindow` 取消;`viewScope` 仅在旧实例已取消时才重建,声明处实例不再成为孤儿。
+
+### 3.5 [已修] Coil 解码被全局串行 + 推理占用解码线程池
+- 伴生对象上的 `Semaphore(1)` 把经此解码器的所有解码(正文页、封面等)串成单队列,上游无此串行 — 已移除。
+- 数秒级推理原先跑在共享 Coil 解码线程池(3 线程)上,会饿死其它解码 — 改为 `Dispatchers.IO.limitedParallelism(1)` 专用调度器;增强的串行性仍由 `ImageEnhancer` 单 worker 与 native 锁保证。
+
+### 3.6 [已修] 解码结果契约错误(显示依赖轮询竞争)
+`decode()` 原返回原始位图、增强结果经异步队列落盘,显示正确性依赖 500ms 轮询与保存队列的竞争,且保存被拒时推理结果被静默丢弃。修复:新增 `ImageEnhancementCache.saveToCacheSync`(同步写入、调用方保留位图所有权),`decode()` 直接返回增强结果;并删除已无调用者的异步 `enqueueSaveToCache` 及其队列/worker。
+
+### 3.7 [已修] 运行时模型下载回退与死代码
+- 移除 `Waifu2x` 的 GitHub/HF 运行时下载回退:模型已全部随包提供,缺失属打包错误,改为快速失败而非在解码线程发起同步网络请求。
+- `extractModelsToCache` 加 `@Synchronized`,避免多入口并发解压竞争。
+- 删除无调用者的 `Waifu2x.process()`、`processingId` 与对应 `nativeProcess` 声明(cpp 侧符号仍由 `nativeProcessRealCugan` 内部使用)。
+
+### 3.8 [已评估/不采纳] abort 定向化
+曾将 `nativeAbortProcessing`/`nativeClearAbortProcessing` 由进程级标志改为按请求 id 定向,但未运行 id 的目标会残留,使后续推理被误杀(当前单 worker + 全局 native 锁下,原「每次 prepare 无条件清除」语义自愈且正确)。评估后回退,保持上游语义。
+
 ## 4. 机械检查结果
 
 - ✅ `i18n/`、`i18n-sy/` 非 base 无任何新增(diff 为空) — 符合 AGENTS.md i18n 硬规则
@@ -81,6 +99,8 @@
 - ✅ `spotlessApply` → `spotlessCheck` 通过;`assembleDebug` / `assemblePreview`(R8)通过
 - ✅ 无上游标识泄漏(未动 `AppUpdateChecker.GITHUB_REPO`、applicationId 保持 `app.komikku`)
 - ✅ 偏好键与上游一致,上游用户迁移路径可用
+- ✅ `.gitattributes`:`*.param` 与 `*.bin`/`*.so`/`*.dlc`/`*.a` 一致标记为 binary,防止 ncnn 模型描述被行尾归一化
+- ✅ `docs/upscale-assets-sha256sums.txt` 覆盖全部二进制与 ncnn `.param`
 - ⚠️ 未跟踪的 `app/src/main/assets/Anime4K_*.glsl`(根目录 7 个)是用户本地既有文件,与本次移植无关,保持未跟踪
 
 ## 5. 遗留/待决事项
