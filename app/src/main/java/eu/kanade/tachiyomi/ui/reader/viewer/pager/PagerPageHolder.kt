@@ -87,11 +87,18 @@ class PagerPageHolder(
         mangaId = viewer.activity.viewModel.manga?.id ?: -1L
         chapterId = page.chapter.chapter.id ?: -1L
         readerPage = page
-        // Merged double pages are a transform of two sources; skip the live enhanced swap for them.
-        enhancementDisplayEnabled = extraPage == null
         if (extraPage == null) {
             enhancedImageSourceFactory = { file ->
                 processEnhanced(Buffer().readFrom(file.inputStream()))
+            }
+        } else {
+            // SY merged double page: enhance both halves and merge them for display.
+            secondaryPage = extraPage
+            enhancedMergeSourceFactory = { primary, secondary ->
+                mergeEnhancedPages(
+                    Buffer().readFrom(primary.inputStream()),
+                    Buffer().readFrom(secondary.inputStream()),
+                )
             }
         }
         // KMK <--
@@ -429,6 +436,45 @@ class PagerPageHolder(
         }
     }
 
+    /**
+     * Merges the enhanced halves of an SY double-page spread for display. Unlike [mergePages] this
+     * never mutates layout state (full page flags, split pages), so it is safe to call for an
+     * in-place swap once the spread was already laid out. Returns null when the halves cannot be
+     * merged, in which case the caller keeps showing the original spread.
+     */
+    private fun mergeEnhancedPages(imageSource: BufferedSource, imageSource2: BufferedSource): BufferedSource? {
+        if (page.fullPage) {
+            imageSource2.close()
+            return imageSource
+        }
+
+        if (ImageUtil.isAnimatedAndSupported(imageSource) || ImageUtil.isAnimatedAndSupported(imageSource2)) {
+            imageSource.close()
+            imageSource2.close()
+            return null
+        }
+
+        val imageBitmap = decodeImage(imageSource)
+        val imageBitmap2 = if (imageBitmap != null) decodeImage(imageSource2) else null
+        if (imageBitmap == null || imageBitmap.height < imageBitmap.width ||
+            imageBitmap2 == null || imageBitmap2.height < imageBitmap2.width
+        ) {
+            imageSource.close()
+            imageSource2.close()
+            return null
+        }
+
+        val isLTR = (viewer !is R2LPagerViewer) xor viewer.config.invertDoublePages
+        val centerMargin = calculateCenterMargin(imageBitmap.height, imageBitmap2.height)
+
+        imageSource.close()
+        imageSource2.close()
+
+        return ImageUtil.mergeBitmaps(imageBitmap, imageBitmap2, isLTR, centerMargin, viewer.config.pageCanvasColor) {
+            updateProgress(it)
+        }
+    }
+
     private fun handleWideImage(imageSource: BufferedSource): BufferedSource {
         return if (
             !ImageUtil.isAnimatedAndSupported(imageSource) &&
@@ -477,6 +523,7 @@ class PagerPageHolder(
             viewer.splitDoublePages(page)
             if (extraPage?.fullPage == true || page.fullPage) {
                 extraPage = null
+                secondaryPage = null
             }
         }
     }
