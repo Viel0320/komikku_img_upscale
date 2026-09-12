@@ -46,7 +46,7 @@
 | `viewer/ReaderPageImageView.kt` | 485→1396 行:状态角标、增强图轮询、交叉淡入交换、缓存自愈、onPageSelected 剪枝 | ✏️ 部分移植 + 2 处修正 | 保留 komikku 的 KMK 缩放特性(disableZoomIn/doubleTapZoom/landscapeZoomScaleType)与 webtoon 长条 Coil 解码路径(并在该路径也接入增强);`enhancementDisplayEnabled` 为本分支新增开关;**修复 SSIV recycle 竞态**(§3.1)、**偏好 collector 绑定 attach/detach 生命周期**(§3.4) |
 | `viewer/pager/PagerViewer.kt` | offscreenPageLimit 联动、destroy 时 cancelAll、hasSplitPage | ✏️ 适配 | `else 1` 保留 komikku 默认(上游 mihon 为 2);新增 `hasSplitPage` |
 | `viewer/pager/PagerConfig.kt` | 16 个偏好变更监听(cancelAll + 清缓存 + 刷 adapter) | ✅ 原样 | |
-| `viewer/pager/PagerPageHolder.kt` | 增强上下文绑定、缓存优先显示、拆页变体 | ✏️ 适配(差异最大) | 见 §2 拆页设计 |
+| `viewer/pager/PagerPageHolder.kt` | 增强上下文绑定、缓存优先显示、拆页变体、合并双页 | ✏️ 适配(差异最大) | 见 §2 拆页设计与 §2.2 合并双页 |
 | `viewer/webtoon/WebtoonViewer.kt` | destroy cancelAll、onPageSelected reprioritize、currentGlobalPageIndex | ✅ 原样 | |
 | `viewer/webtoon/WebtoonConfig.kt` | 同 PagerConfig 监听(以 appContext 清缓存) | ✅ 原样 | |
 | `viewer/webtoon/WebtoonPageHolder.kt` | (上游无此文件改动;本分支主动接入) | 🆕 本分支扩展 | webtoon 侧缓存优先显示;上游 webtoon 无拆页概念故无需变体 |
@@ -56,7 +56,7 @@
 ## 2. 有意差异(7 项)
 
 1. **拆页增强重新设计**:上游 auto-split 模式对每个"半页"独立增强(`wide_left/right` 变体 + 拆分增强流),与其自研 PageSpreadDetector 深度耦合。komikku 用 SY 的 `dualPageSplit`(显示期拆分 + InsertPage 独立 holder),照搬会有重复插入 InsertPage 的风险。本分支方案:**整页增强 + 显示期重切**(`processEnhanced` 不再触发 `onPageSplit`,以 `hasSplitPage` 守卫缓存过早命中),两半共享同一份整页缓存。代价:拆页父页首载必须先看一次原始整页(与上游守卫语义一致)。
-2. **SY 合并双页(extraPage)无在线切换**:两源重跑 `mergePages` 有副作用(fullPage 标记/插入拆页),上游的合并函数是副作用轻量版。本分支合并页保持原始显示,增强缓存就绪后于 holder 重建时生效;由 `enhancementDisplayEnabled` 关闭该 holder 的增强显示/轮询。
+2. **SY 合并双页(extraPage)在线合并**:两源直接重跑 `mergePages` 会带副作用(fullPage 标记/插入拆页)。本分支改为:主副页各自独立增强(cache key 用各自的 `enhancementKeySuffix`),`ReaderPageImageView` 通过 `secondaryPage` 感知副页并在两半缓存都就绪后调用无副作用的 `mergeEnhancedPages` 在线换入;任一半未就绪或不可增强时保持原始显示,不阻塞拆页布局。
 3. **底栏快捷开关按钮未移植**:komikku 底栏是 SY 的用户可配置按钮系统(`ReaderBottomButton` 枚举 + 设置页),上游是固定图标行,直接搬会破坏按钮自定义体系。`toggleImageEnhancement()` 已就绪,后续若要加按钮走 `ReaderBottomButton` 枚举扩展。
 4. **ink 滤镜未移植**:上游隐藏偏好控制(无设置 UI、默认全关),与 upscale 无关。
 5. **spatial depth(Depth Anything)未移植**:独立特性,非 upscale;相关 cpp/Kotlin/assets/字符串均剔除。
@@ -108,4 +108,3 @@
 1. **仓库体积**:third_party(ncnn 99MB + qnn-include 1.9MB)、assets(~527MB)、libQnnModelDlc(3.2MB)拟全部入库(上游同样入库),仓库将增 ~630MB。备选:Git LFS / 下载脚本 / 只保留 v79 上下文 — **待确认后提交**。
 2. `reader_image_enhancement_toast` 字符串目前无引用(为底栏按钮预留)。
 3. NPU 上下文为静态资产;若未来要为新架构重新生成,需上游 `tools/qnn` 的 Docker 管线(未移植)。
-4. 合并双页模式的在线切换(§2.2)可在重设计 `mergePages` 副作用后补齐。

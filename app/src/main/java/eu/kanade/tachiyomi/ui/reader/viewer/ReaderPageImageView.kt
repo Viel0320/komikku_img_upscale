@@ -163,8 +163,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     // KMK -->
     var enhancedImageSourceFactory: ((java.io.File) -> BufferedSource?)? = null
+
+    /**
+     * Secondary page of an SY merged double-page spread. When set, both halves are enhanced and
+     * [enhancedMergeSourceFactory] merges them into the displayed spread.
+     */
+    var secondaryPage: ReaderPage? = null
+
+    /** Builds the merged display source from the cached enhanced halves of a double-page spread. */
+    var enhancedMergeSourceFactory: ((primary: java.io.File, secondary: java.io.File) -> BufferedSource?)? = null
     var suppressDefaultStatus = false
-    /** Whether the enhanced image can be swapped in for the current display (false for merged double pages). */
+    /** Whether this view participates in image enhancement (merged spreads included). */
     var enhancementDisplayEnabled: Boolean = true
     // KMK <--
 
@@ -562,72 +571,87 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val cId = readerPage?.chapter?.chapter?.id ?: chapterId
         val pIdx = readerPage?.index ?: pageIndex
 
+        val secondary = secondaryPage
+
         // Update global current page index to help other instances decide if they should self-heal
         if (controlsCurrentPageSelection && pIdx >= 0) {
             currentGlobalPageIndex = pIdx
-            ImageEnhancer.reprioritizeAround(pIdx, enhancementVariant())
+            ImageEnhancer.reprioritizeAround(
+                pageIndex = pIdx,
+                pageVariant = enhancementVariant(),
+                secondaryPageIndex = secondary?.index,
+                secondaryPageVariant = secondary?.let(::variantOf).orEmpty(),
+            )
         }
 
         if (pIdx >= 0 && mId != -1L && cId != -1L && realCuganEnabled && enhancementDisplayEnabled) {
             ImageEnhancementCache.init(context)
-            val configHash = ImageEnhancementCache.getConfigHash(
-                noise = realCuganNoiseLevel,
-                scale = realCuganScale,
-                model = realCuganModel,
-                realEsrganStyle = preferences.realEsrganStyle().get(),
-                maxWidth = realCuganMaxSizeWidth,
-                maxHeight = realCuganMaxSizeHeight,
-                skipMaxWidth = realCuganSkipMaxSizeWidth,
-                skipMaxHeight = realCuganSkipMaxSizeHeight,
-                tileSize = tileSize,
-                precision = preferences.realCuganPrecision().get(),
-                fp16Arithmetic = preferences.realCuganFp16Arithmetic().get(),
-                processingBackend = preferences.realCuganProcessingBackend().get(),
-            )
+            val configHash = enhancementConfigHash()
             val pageVariant = enhancementVariant()
+            val secondaryFile = secondaryCachedFile(mId, configHash)
 
-            val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
-            if (cachedFile != null) {
-                // Already processed - update status and load enhanced image
-                val uriString = cachedFile.toURI().toString()
-                if (currentLoadedUri != uriString) {
-                    // Load the enhanced image if not already loaded or if source changed
-                    viewScope.launchIO {
-                        val transformedSource = enhancedImageSourceFactory?.invoke(cachedFile)
-                        if (transformedSource != null) {
-                            withUIContext {
-                                setProcessedSource(cachedFile, transformedSource = transformedSource)
-                            }
-                            return@launchIO
-                        }
-
-                        val bitmap = decodeEnhancedBitmap(cachedFile)
-
-                        if (bitmap != null) {
-                            withUIContext {
-                                setProcessedSource(cachedFile, bitmap = bitmap)
-                            }
-                        } else {
-                            healInvalidEnhancedCache(mId, cId, pIdx, configHash, readerPage, forceCurrentPage = true)
-                            startEnhancementPolling(mId, cId, pIdx, configHash, readerPage)
-                        }
-                    }
-                } else {
-                    updateStatus(context.stringResource(KMR.strings.reader_status_processed))
-                }
-            } else if (ImageEnhancementCache.isSkipped(mId, cId, pIdx, configHash, pageVariant)) {
+            if (secondary != null && isSecondarySkipped(mId, configHash)) {
+                // The sibling half is not enhanced, so the merged spread stays raw.
                 updateStatus(context.stringResource(KMR.strings.reader_status_raw))
-            } else {
-                // Not in cache, not skipped - ensure it's being processed with high priority
+            } else if (secondary != null && secondaryFile == null) {
+                // Waiting for the sibling half - keep both queued and let polling swap once ready.
                 updateStatus(context.stringResource(KMR.strings.reader_status_processing))
                 enqueueEnhancement(mId, cId, pIdx, highPriority = true)
-
-                // Start/restart polling if not already running
+                enqueueSecondaryIfNeeded(mId, configHash, highPriority = true)
                 startEnhancementPolling(mId, cId, pIdx, configHash)
+            } else {
+                val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
+                if (cachedFile != null) {
+                    // Already processed - update status and load enhanced image
+                    val uriString = cachedFile.toURI().toString()
+                    if (currentLoadedUri != uriString) {
+                        // Load the enhanced image if not already loaded or if source changed
+                        viewScope.launchIO {
+                            val transformedSource = buildEnhancedDisplaySource(cachedFile, secondaryFile)
+                            if (transformedSource != null) {
+                                withUIContext {
+                                    setProcessedSource(cachedFile, transformedSource = transformedSource)
+                                }
+                                return@launchIO
+                            }
+
+                            if (secondaryFile != null) {
+                                // Cannot merge the enhanced halves - keep showing the original spread.
+                                withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
+                                return@launchIO
+                            }
+
+                            val bitmap = decodeEnhancedBitmap(cachedFile)
+
+                            if (bitmap != null) {
+                                withUIContext {
+                                    setProcessedSource(cachedFile, bitmap = bitmap)
+                                }
+                            } else {
+                                healInvalidEnhancedCache(mId, cId, pIdx, configHash, readerPage, forceCurrentPage = true)
+                                startEnhancementPolling(mId, cId, pIdx, configHash, readerPage)
+                            }
+                        }
+                    } else {
+                        updateStatus(context.stringResource(KMR.strings.reader_status_processed))
+                    }
+                } else if (ImageEnhancementCache.isSkipped(mId, cId, pIdx, configHash, pageVariant)) {
+                    updateStatus(context.stringResource(KMR.strings.reader_status_raw))
+                } else {
+                    // Not in cache, not skipped - ensure it's being processed with high priority
+                    updateStatus(context.stringResource(KMR.strings.reader_status_processing))
+                    enqueueEnhancement(mId, cId, pIdx, highPriority = true)
+                    enqueueSecondaryIfNeeded(mId, configHash, highPriority = true)
+
+                    // Start/restart polling if not already running
+                    startEnhancementPolling(mId, cId, pIdx, configHash)
+                }
             }
         }
 
-        // Prune others
+        // Prune others. Keep the same page-based window as the polling self-heal check
+        // (`pIdx <= currentGlobalPageIndex + preloadSize`); in double-page mode the sibling page is
+        // pIdx + 1 and always included because preloadSize is at least 1.
         if (pIdx >= 0 && mId != -1L && cId != -1L) {
             ImageEnhancer.cancelRequestsLessThan(context.applicationContext, mId, cId, pIdx)
             ImageEnhancer.cancelRequestsGreaterThan(context.applicationContext, mId, cId, pIdx + preloadSize)
@@ -888,7 +912,68 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     private fun enhancementVariant(): String {
-        return enhancementVariantOverride ?: readerPage?.enhancementKeySuffix.orEmpty()
+        return variantOf(readerPage)
+    }
+
+    private fun variantOf(page: ReaderPage?): String {
+        return enhancementVariantOverride ?: page?.enhancementKeySuffix.orEmpty()
+    }
+
+    private fun enhancementConfigHash(): String {
+        return ImageEnhancementCache.getConfigHash(
+            noise = realCuganNoiseLevel,
+            scale = realCuganScale,
+            model = realCuganModel,
+            realEsrganStyle = preferences.realEsrganStyle().get(),
+            maxWidth = realCuganMaxSizeWidth,
+            maxHeight = realCuganMaxSizeHeight,
+            skipMaxWidth = realCuganSkipMaxSizeWidth,
+            skipMaxHeight = realCuganSkipMaxSizeHeight,
+            tileSize = tileSize,
+            precision = preferences.realCuganPrecision().get(),
+            fp16Arithmetic = preferences.realCuganFp16Arithmetic().get(),
+            processingBackend = preferences.realCuganProcessingBackend().get(),
+        )
+    }
+
+    private fun secondaryCachedFile(mangaId: Long, configHash: String): java.io.File? {
+        val page = secondaryPage ?: return null
+        val chapterId = page.chapter.chapter.id ?: return null
+        return ImageEnhancementCache.getCachedImage(mangaId, chapterId, page.index, configHash, variantOf(page))
+    }
+
+    private fun isSecondarySkipped(mangaId: Long, configHash: String): Boolean {
+        val page = secondaryPage ?: return false
+        val chapterId = page.chapter.chapter.id ?: return false
+        return ImageEnhancementCache.isSkipped(mangaId, chapterId, page.index, configHash, variantOf(page))
+    }
+
+    private fun isSecondaryRequested(mangaId: Long): Boolean {
+        val page = secondaryPage ?: return false
+        val chapterId = page.chapter.chapter.id ?: return false
+        return ImageEnhancer.hasRequest(mangaId, chapterId, page.index, variantOf(page))
+    }
+
+    /**
+     * Resolves the display source for the (possibly merged) enhanced page. When [secondaryFile] is
+     * present the two enhanced halves are merged, otherwise the single enhanced image is used.
+     */
+    private fun buildEnhancedDisplaySource(primaryFile: java.io.File, secondaryFile: java.io.File?): BufferedSource? {
+        return if (secondaryFile != null) {
+            enhancedMergeSourceFactory?.invoke(primaryFile, secondaryFile)
+        } else {
+            enhancedImageSourceFactory?.invoke(primaryFile)
+        }
+    }
+
+    private fun enqueueSecondaryIfNeeded(mangaId: Long, configHash: String, highPriority: Boolean) {
+        val page = secondaryPage ?: return
+        val chapterId = page.chapter.chapter.id ?: return
+        val variant = variantOf(page)
+        if (ImageEnhancementCache.getCachedImage(mangaId, chapterId, page.index, configHash, variant) != null) return
+        if (ImageEnhancementCache.isSkipped(mangaId, chapterId, page.index, configHash, variant)) return
+        if (ImageEnhancer.hasRequest(mangaId, chapterId, page.index, variant)) return
+        ImageEnhancer.enhance(context.applicationContext, page, highPriority)
     }
 
     private fun buildEnhancementDataProvider(
@@ -1201,52 +1286,54 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
 
         ImageEnhancementCache.init(context)
-        val configHash = ImageEnhancementCache.getConfigHash(
-            noise = realCuganNoiseLevel,
-            scale = realCuganScale,
-            model = realCuganModel,
-            realEsrganStyle = preferences.realEsrganStyle().get(),
-            maxWidth = realCuganMaxSizeWidth,
-            maxHeight = realCuganMaxSizeHeight,
-            skipMaxWidth = realCuganSkipMaxSizeWidth,
-            skipMaxHeight = realCuganSkipMaxSizeHeight,
-            tileSize = tileSize,
-            precision = preferences.realCuganPrecision().get(),
-            fp16Arithmetic = preferences.realCuganFp16Arithmetic().get(),
-            processingBackend = preferences.realCuganProcessingBackend().get(),
-        )
+        val configHash = enhancementConfigHash()
         val pageVariant = enhancementVariant()
+        val secondary = secondaryPage
+        val secondaryFile = secondaryCachedFile(mId, configHash)
 
-        val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
-        if (cachedFile != null) {
-            logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx found in cache on first check: ${cachedFile.absolutePath}" }
-            val transformedSource = enhancedImageSourceFactory?.invoke(cachedFile)
-            if (transformedSource != null) {
-                setProcessedSource(cachedFile, transformedSource = transformedSource)
-            } else {
-                val bitmap = decodeEnhancedBitmap(cachedFile)
-                if (bitmap != null) {
-                    val uri = android.net.Uri.fromFile(cachedFile)
-                    setImage(ImageSource.uri(context, uri))
-                    currentLoadedUri = cachedFile.toURI().toString()
-                    isVisible = true
-                    updateStatus(context.stringResource(KMR.strings.reader_status_processed))
-                } else {
-                    viewScope.launchIO {
-                        healInvalidEnhancedCache(
-                            mId = mId,
-                            cId = cId,
-                            pIdx = pIdx,
-                            configHash = configHash,
-                            triggerData = originalData,
-                            streamFn = streamFn,
-                            forceCurrentPage = pIdx == currentGlobalPageIndex,
-                        )
-                        startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
-                    }
-                }
-            }
+        if (secondary != null && isSecondarySkipped(mId, configHash)) {
+            updateStatus(context.stringResource(KMR.strings.reader_status_raw))
             return
+        }
+
+        if (secondary == null || secondaryFile != null) {
+            val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
+            if (cachedFile != null) {
+                logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx found in cache on first check: ${cachedFile.absolutePath}" }
+                if (secondary == null) {
+                    val transformedSource = buildEnhancedDisplaySource(cachedFile, null)
+                    if (transformedSource != null) {
+                        setProcessedSource(cachedFile, transformedSource = transformedSource)
+                        return
+                    }
+                    val bitmap = decodeEnhancedBitmap(cachedFile)
+                    if (bitmap != null) {
+                        val uri = android.net.Uri.fromFile(cachedFile)
+                        setImage(ImageSource.uri(context, uri))
+                        currentLoadedUri = cachedFile.toURI().toString()
+                        isVisible = true
+                        updateStatus(context.stringResource(KMR.strings.reader_status_processed))
+                    } else {
+                        viewScope.launchIO {
+                            healInvalidEnhancedCache(
+                                mId = mId,
+                                cId = cId,
+                                pIdx = pIdx,
+                                configHash = configHash,
+                                triggerData = originalData,
+                                streamFn = streamFn,
+                                forceCurrentPage = pIdx == currentGlobalPageIndex,
+                            )
+                            startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
+                        }
+                    }
+                    return
+                }
+                // Merged spread: both halves are cached, but decoding and merging two full pages
+                // must stay off the UI thread, so the polling job performs the swap instead.
+                startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
+                return
+            }
         }
 
         if (ImageEnhancementCache.isSkipped(mId, cId, pIdx, configHash, pageVariant)) {
@@ -1286,6 +1373,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
         }
 
+        // Merged spreads must enhance both halves so they can be merged for display.
+        secondary?.let {
+            enqueueSecondaryIfNeeded(mId, configHash, highPriority = pIdx == ImageEnhancer.targetPageIndex)
+        }
+
         // Simplified polling for the enhanced image in cache
         startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
     }
@@ -1305,6 +1397,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         processingJob = viewScope.launchIO {
             try {
                 val pageVariant = enhancementVariant()
+                val secondary = secondaryPage
                 var attempts = 0
                 var wasEnhancing = false
                 while (attempts < 120 && isActive) {
@@ -1312,14 +1405,24 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
                         return@launchIO
                     }
+                    if (secondary != null && isSecondarySkipped(mId, configHash)) {
+                        withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
+                        return@launchIO
+                    }
+                    val secondaryFile = secondaryCachedFile(mId, configHash)
                     val file = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
-                    if (file != null) {
+                    if (file != null && (secondary == null || secondaryFile != null)) {
                         logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx/$pageVariant found in cache during polling: ${file.absolutePath}" }
-                        val transformedSource = enhancedImageSourceFactory?.invoke(file)
+                        val transformedSource = buildEnhancedDisplaySource(file, secondaryFile)
                         if (transformedSource != null) {
                             withUIContext {
                                 setProcessedSource(file, transformedSource = transformedSource)
                             }
+                            return@launchIO
+                        }
+                        if (secondaryFile != null) {
+                            // Cannot merge the enhanced halves - keep showing the original spread.
+                            withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
                             return@launchIO
                         }
 
@@ -1348,7 +1451,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
                     // Check progress status
                     val pid = Waifu2x.getProgressId()
-                    if (pid == pIdx) {
+                    if (pid == pIdx || (secondary != null && pid == secondary.index)) {
                         wasEnhancing = true
                         val rawProgress = Waifu2x.getProgressPercent()
                         if (rawProgress in 0..100) {
@@ -1357,7 +1460,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             val dots = (rawProgress % 3).let { if (it < 0) -it else it } + 1
                             updateStatus(context.stringResource(KMR.strings.reader_status_enhancing) + ".".repeat(dots))
                         }
-                    } else if (ImageEnhancer.hasRequest(mId, cId, pIdx, pageVariant)) {
+                    } else if (ImageEnhancer.hasRequest(mId, cId, pIdx, pageVariant) || isSecondaryRequested(mId)) {
                         if (!wasEnhancing) {
                             updateStatus(context.stringResource(KMR.strings.reader_status_queued))
                         } else {
@@ -1371,6 +1474,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             logcat(LogPriority.WARN) { "ReaderPageImageView: Polling re-enqueue page $pIdx/$pageVariant (cur=$current)" }
                             val isCurrent = pIdx == current
                             enqueueEnhancement(mId, cId, pIdx, highPriority = isCurrent, originalData = originalData, streamFn = streamFn)
+                            secondary?.let { enqueueSecondaryIfNeeded(mId, configHash, highPriority = isCurrent) }
                         } else {
                             updateStatus(context.stringResource(KMR.strings.reader_status_raw))
                             delay(2000)
