@@ -127,10 +127,6 @@ android {
             initWith(getByName("preview"))
 
             applicationIdSuffix = ".viel"
-
-            matchingFallbacks.addAll(commonMatchingFallbacks)
-
-            buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         }
         // KMK <--
         create("benchmark") {
@@ -150,6 +146,8 @@ android {
     sourceSets {
         getByName("preview").res.srcDirs("src/beta/res")
         // KMK -->
+        // `initWith` does not inherit source sets, so the beta resources must be added
+        // explicitly to reuse preview's launcher icon/colors.
         getByName("viel").res.srcDirs("src/beta/res")
         // KMK <--
         getByName("benchmark").res.srcDirs("src/debug/res")
