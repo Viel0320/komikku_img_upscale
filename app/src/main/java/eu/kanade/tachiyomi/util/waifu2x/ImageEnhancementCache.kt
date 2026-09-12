@@ -3,11 +3,6 @@ package eu.kanade.tachiyomi.util.waifu2x
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -25,8 +20,6 @@ object ImageEnhancementCache {
     private var lastTrimTime = 0L
     private val cacheGeneration = AtomicInteger(0)
     private val pendingSaveKeys = ConcurrentHashMap<String, Int>()
-    private val saveQueue = Channel<SaveRequest>(capacity = 1)
-    private val saveScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private data class SaveRequest(
         val mangaId: Long,
@@ -38,26 +31,6 @@ object ImageEnhancementCache {
         val generation: Int,
         val key: String,
     )
-
-    init {
-        saveScope.launch {
-            for (request in saveQueue) {
-                try {
-                    if (request.generation == cacheGeneration.get()) {
-                        val file = writeToCache(request)
-                        if (file != null) {
-                            android.util.Log.d("ImageEnhancementCache", "Saved page ${request.pageIndex}/${request.pageVariant} to ${file.absolutePath}")
-                        } else {
-                            android.util.Log.e("ImageEnhancementCache", "Failed to save page ${request.pageIndex}/${request.pageVariant}")
-                        }
-                    }
-                } finally {
-                    pendingSaveKeys.remove(request.key, request.generation)
-                    if (!request.bitmap.isRecycled) request.bitmap.recycle()
-                }
-            }
-        }
-    }
 
     fun init(context: Context) {
         if (cacheDir == null) {
@@ -119,40 +92,42 @@ object ImageEnhancementCache {
         }
     }
 
+    // KMK -->
     /**
-     * Transfers ownership of [bitmap] to the cache pipeline, including when the request is rejected.
+     * Compress and write [bitmap] to the cache synchronously on the caller's dispatcher.
+     * The caller keeps ownership of [bitmap], so an enhanced result can be both persisted
+     * and returned for display from the same decode pass.
      */
-    suspend fun enqueueSaveToCache(mangaId: Long, chapterId: Long, pageIndex: Int, configHash: String, bitmap: Bitmap, pageVariant: String = ""): Boolean {
-        if (cacheDir == null || !isDisplayable(bitmap)) {
-            if (!bitmap.isRecycled) bitmap.recycle()
-            return false
-        }
+    fun saveToCacheSync(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        configHash: String,
+        bitmap: Bitmap,
+        pageVariant: String = "",
+    ): Boolean {
+        if (cacheDir == null || !isDisplayable(bitmap)) return false
         val key = pendingSaveKey(mangaId, chapterId, pageIndex, pageVariant)
         val generation = cacheGeneration.get()
-        if (pendingSaveKeys.putIfAbsent(key, generation) != null) {
-            if (!bitmap.isRecycled) bitmap.recycle()
-            return false
-        }
-
-        val request = SaveRequest(
-            mangaId = mangaId,
-            chapterId = chapterId,
-            pageIndex = pageIndex,
-            configHash = configHash,
-            bitmap = bitmap,
-            pageVariant = pageVariant,
-            generation = generation,
-            key = key,
-        )
-        try {
-            saveQueue.send(request)
-            return true
-        } catch (t: Throwable) {
+        if (pendingSaveKeys.putIfAbsent(key, generation) != null) return false
+        return try {
+            writeToCache(
+                SaveRequest(
+                    mangaId = mangaId,
+                    chapterId = chapterId,
+                    pageIndex = pageIndex,
+                    configHash = configHash,
+                    bitmap = bitmap,
+                    pageVariant = pageVariant,
+                    generation = generation,
+                    key = key,
+                ),
+            ) != null
+        } finally {
             pendingSaveKeys.remove(key, generation)
-            if (!bitmap.isRecycled) bitmap.recycle()
-            throw t
         }
     }
+    // KMK <--
 
     fun isSavePending(mangaId: Long, chapterId: Long, pageIndex: Int, pageVariant: String = ""): Boolean {
         return pendingSaveKeys.containsKey(pendingSaveKey(mangaId, chapterId, pageIndex, pageVariant))
