@@ -339,22 +339,34 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                     // --- End Output Resolution Limit ---
 
                                                     if (ImageEnhancementCache.isDisplayable(result)) {
-                                                        // KMK --> persist synchronously so the enhanced image is
-                                                        // durable before this decode returns, and keep ownership
-                                                        // so the enhanced bitmap can be returned as the result.
+                                                        // KMK --> the enhanced bitmap is handed to the display, so
+                                                        // the cache writer receives its own copy and encodes it
+                                                        // off the inference thread instead of blocking it.
                                                         ownsResult = false
-                                                        val saved = ImageEnhancementCache.saveToCacheSync(
-                                                            mangaId,
-                                                            chapterId,
-                                                            pageIndex,
-                                                            configHash,
-                                                            result,
-                                                            pageVariant,
-                                                        )
-                                                        if (!saved) {
-                                                            logcat(LogPriority.WARN) { "TachiyomiImageDecoder: Page $pageIndex/$pageVariant enhanced result not cached" }
-                                                        }
+                                                        // Settled before the enqueue can suspend, so a
+                                                        // cancellation still hands the bitmap back for recycling.
                                                         enhancedResult = result
+                                                        val cacheBitmap = try {
+                                                            result.copy(Bitmap.Config.ARGB_8888, false)
+                                                        } catch (e: Exception) {
+                                                            logcat(LogPriority.WARN, e) {
+                                                                "TachiyomiImageDecoder: Unable to copy page $pageIndex/$pageVariant for caching"
+                                                            }
+                                                            null
+                                                        }
+                                                        if (cacheBitmap != null) {
+                                                            val queued = ImageEnhancementCache.enqueueSaveToCache(
+                                                                mangaId,
+                                                                chapterId,
+                                                                pageIndex,
+                                                                configHash,
+                                                                cacheBitmap,
+                                                                pageVariant,
+                                                            )
+                                                            if (!queued) {
+                                                                logcat(LogPriority.WARN) { "TachiyomiImageDecoder: Page $pageIndex/$pageVariant enhanced result not cached" }
+                                                            }
+                                                        }
                                                     } else {
                                                         logcat(LogPriority.ERROR) { "TachiyomiImageDecoder: Page $pageIndex/$pageVariant produced a nearly transparent result, keeping original image" }
                                                     }

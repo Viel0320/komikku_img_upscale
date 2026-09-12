@@ -3,6 +3,12 @@ package eu.kanade.tachiyomi.util.waifu2x
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +26,41 @@ object ImageEnhancementCache {
     private var lastTrimTime = 0L
     private val cacheGeneration = AtomicInteger(0)
     private val pendingSaveKeys = ConcurrentHashMap<String, Int>()
+
+    // KMK -->
+    // Encoding a 2x enhanced page (WebP q90, tens of MB of ARGB_8888) takes
+    // hundreds of milliseconds. It used to run inline on the single-threaded
+    // enhance dispatcher, which serialized it with native inference and cut
+    // steady-state throughput by T_encode/(T_infer + T_encode). The writer below
+    // lives on its own dispatcher so both stages overlap: one slot of buffering
+    // plus one in-flight encode keeps at most two enhanced copies alive.
+    private val saveQueue = Channel<SaveRequest>(capacity = 1)
+    private val saveDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private val saveScope = CoroutineScope(saveDispatcher + SupervisorJob())
+
+    init {
+        saveScope.launch {
+            for (request in saveQueue) {
+                try {
+                    if (request.generation == cacheGeneration.get()) {
+                        writeToCache(request)
+                    }
+                } catch (t: Throwable) {
+                    android.util.Log.e(
+                        "ImageEnhancementCache",
+                        "Failed to save enhanced image for page ${request.pageIndex}",
+                        t,
+                    )
+                } finally {
+                    pendingSaveKeys.remove(request.key, request.generation)
+                    if (!request.bitmap.isRecycled) {
+                        request.bitmap.recycle()
+                    }
+                }
+            }
+        }
+    }
+    // KMK <--
 
     private data class SaveRequest(
         val mangaId: Long,
@@ -94,11 +135,17 @@ object ImageEnhancementCache {
 
     // KMK -->
     /**
-     * Compress and write [bitmap] to the cache synchronously on the caller's dispatcher.
-     * The caller keeps ownership of [bitmap], so an enhanced result can be both persisted
-     * and returned for display from the same decode pass.
+     * Hand [bitmap] to the asynchronous cache writer.
+     *
+     * Ownership of [bitmap] transfers to the pipeline, which recycles it after
+     * the encode (or immediately when the request is rejected), so callers must
+     * pass a copy they keep no further use for.
+     *
+     * This only suspends while the single write slot is occupied, never for the
+     * duration of an encode, so the inference pipeline advances as soon as the
+     * request is accepted.
      */
-    fun saveToCacheSync(
+    suspend fun enqueueSaveToCache(
         mangaId: Long,
         chapterId: Long,
         pageIndex: Int,
@@ -106,25 +153,37 @@ object ImageEnhancementCache {
         bitmap: Bitmap,
         pageVariant: String = "",
     ): Boolean {
-        if (cacheDir == null || !isDisplayable(bitmap)) return false
+        if (cacheDir == null) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return false
+        }
         val key = pendingSaveKey(mangaId, chapterId, pageIndex, pageVariant)
         val generation = cacheGeneration.get()
-        if (pendingSaveKeys.putIfAbsent(key, generation) != null) return false
+        if (pendingSaveKeys.putIfAbsent(key, generation) != null) {
+            if (!bitmap.isRecycled) bitmap.recycle()
+            return false
+        }
+        val request = SaveRequest(
+            mangaId = mangaId,
+            chapterId = chapterId,
+            pageIndex = pageIndex,
+            configHash = configHash,
+            bitmap = bitmap,
+            pageVariant = pageVariant,
+            generation = generation,
+            key = key,
+        )
         return try {
-            writeToCache(
-                SaveRequest(
-                    mangaId = mangaId,
-                    chapterId = chapterId,
-                    pageIndex = pageIndex,
-                    configHash = configHash,
-                    bitmap = bitmap,
-                    pageVariant = pageVariant,
-                    generation = generation,
-                    key = key,
-                ),
-            ) != null
-        } finally {
+            saveQueue.send(request)
+            true
+        } catch (e: CancellationException) {
             pendingSaveKeys.remove(key, generation)
+            if (!bitmap.isRecycled) bitmap.recycle()
+            throw e
+        } catch (t: Throwable) {
+            pendingSaveKeys.remove(key, generation)
+            if (!bitmap.isRecycled) bitmap.recycle()
+            false
         }
     }
     // KMK <--
