@@ -210,10 +210,15 @@ jobs:
         env:
           CHANGELOG_INPUT: ${{ inputs.changelog }}
         run: |
+          # Expand only the literal `\n` the input convention uses (%b would also reinterpret
+          # every other backslash). Four backslashes are required so the pattern matches a
+          # literal `\n` — quoting and pattern matching each strip one level. The heredoc
+          # delimiter is a unique marker so release-note lines can never truncate the value.
+          changelog="${CHANGELOG_INPUT//\\\\n/$'\n'}"
           {
-            echo "CHANGELOG<<{delimiter}"
-            printf '%b\n' "${CHANGELOG_INPUT}"
-            echo "{delimiter}"
+            echo "CHANGELOG<<VIEL_CHANGELOG_EOF"
+            printf '%s\n' "${changelog}"
+            echo "VIEL_CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create release
