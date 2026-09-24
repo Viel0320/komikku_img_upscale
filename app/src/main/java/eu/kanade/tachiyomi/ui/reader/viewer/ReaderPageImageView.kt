@@ -283,6 +283,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
+    // KMK -->
+    /**
+     * Tag appended to enhancement status labels, e.g. "（QNN）".
+     *
+     * Purely mirrors the configured backend so the label always matches the
+     * config used for cache keys; no runtime probing.
+     */
+    private fun enhancementBackendSuffix(): String {
+        if (!realCuganEnabled) return ""
+        return if (preferences.realCuganProcessingBackend().get() == Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU) {
+            "（QNN）"
+        } else {
+            "（Vulkan）"
+        }
+    }
+    // KMK <--
+
     private fun decodeEnhancedBitmap(file: java.io.File): Bitmap? {
         return try {
             val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath) ?: return null
@@ -565,7 +582,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 updateStatus(context.stringResource(KMR.strings.reader_status_raw))
             } else if (secondary != null && secondaryFile == null) {
                 // Waiting for the sibling half - keep both queued and let polling swap once ready.
-                updateStatus(context.stringResource(KMR.strings.reader_status_processing))
+                updateStatus(context.stringResource(KMR.strings.reader_status_processing) + enhancementBackendSuffix())
                 enqueueEnhancement(mId, cId, pIdx, highPriority = true)
                 enqueueSecondaryIfNeeded(mId, configHash, highPriority = true)
                 startEnhancementPolling(mId, cId, pIdx, configHash)
@@ -603,13 +620,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             }
                         }
                     } else {
-                        updateStatus(context.stringResource(KMR.strings.reader_status_processed))
+                        updateStatus(context.stringResource(KMR.strings.reader_status_processed) + enhancementBackendSuffix())
                     }
                 } else if (ImageEnhancementCache.isSkipped(mId, cId, pIdx, configHash, pageVariant)) {
                     updateStatus(context.stringResource(KMR.strings.reader_status_raw))
                 } else {
                     // Not in cache, not skipped - ensure it's being processed with high priority
-                    updateStatus(context.stringResource(KMR.strings.reader_status_processing))
+                    updateStatus(context.stringResource(KMR.strings.reader_status_processing) + enhancementBackendSuffix())
                     enqueueEnhancement(mId, cId, pIdx, highPriority = true)
                     enqueueSecondaryIfNeeded(mId, configHash, highPriority = true)
 
@@ -813,7 +830,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         transformedSource: BufferedSource? = null,
     ) {
         val uriString = file.toURI().toString()
-        updateStatus(context.stringResource(KMR.strings.reader_status_processed))
+        updateStatus(context.stringResource(KMR.strings.reader_status_processed) + enhancementBackendSuffix())
 
         if (transformedSource != null) {
             val activeView = pageView as? SubsamplingScaleImageView
@@ -1095,7 +1112,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             enhancedBitmap?.recycle()
             enhancedBitmap = null
             isSettingProcessedImage = false
-            updateStatus(context.stringResource(KMR.strings.reader_status_processing))
+            updateStatus(context.stringResource(KMR.strings.reader_status_processing) + enhancementBackendSuffix())
         }
 
         requeueEnhancement(mId, cId, pIdx, triggerData, streamFn, forceCurrentPage)
@@ -1294,7 +1311,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         setImageWithCurrentCrop(ImageSource.uri(context, uri))
                         currentLoadedUri = cachedFile.toURI().toString()
                         isVisible = true
-                        updateStatus(context.stringResource(KMR.strings.reader_status_processed))
+                        updateStatus(context.stringResource(KMR.strings.reader_status_processed) + enhancementBackendSuffix())
                     } else {
                         viewScope.launchIO {
                             healInvalidEnhancedCache(
@@ -1443,16 +1460,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         wasEnhancing = true
                         val rawProgress = Waifu2x.getProgressPercent()
                         if (rawProgress in 0..100) {
-                            updateStatus(context.stringResource(KMR.strings.reader_status_enhancing_progress, rawProgress))
+                            updateStatus(context.stringResource(KMR.strings.reader_status_enhancing_progress, rawProgress) + enhancementBackendSuffix())
                         } else {
                             val dots = (rawProgress % 3).let { if (it < 0) -it else it } + 1
-                            updateStatus(context.stringResource(KMR.strings.reader_status_enhancing) + ".".repeat(dots))
+                            updateStatus(context.stringResource(KMR.strings.reader_status_enhancing) + ".".repeat(dots) + enhancementBackendSuffix())
                         }
                     } else if (ImageEnhancer.hasRequest(mId, cId, pIdx, pageVariant) || isSecondaryRequested(mId)) {
                         if (!wasEnhancing) {
-                            updateStatus(context.stringResource(KMR.strings.reader_status_queued))
+                            updateStatus(context.stringResource(KMR.strings.reader_status_queued) + enhancementBackendSuffix())
                         } else {
-                            updateStatus(context.stringResource(KMR.strings.reader_status_finishing))
+                            updateStatus(context.stringResource(KMR.strings.reader_status_finishing) + enhancementBackendSuffix())
                         }
                     } else {
                         // Not in queue, not cached - might need to re-enqueue
