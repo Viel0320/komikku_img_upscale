@@ -22,8 +22,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.QuerySanitizer.sanitize
 import tachiyomi.core.common.util.lang.launchIO
@@ -181,24 +179,13 @@ abstract class SearchScreenModel(
                         return@async
                     }
 
-                    try {
-                        val page = withContext(coroutineDispatcher) {
-                            source.getSearchManga(1, query.sanitize(), source.getFilterList())
-                        }
-
-                        val titles = page.mangas
-                            .map { it.toDomainManga(source.id) }
-                            .distinctBy { it.url }
-                            .let { networkToLocalManga(it) }
-
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Success(titles))
-                        }
-                    } catch (e: Exception) {
-                        if (isActive) {
-                            updateItem(source, SearchItemResult.Error(e))
-                        }
+                    // KMK --> searchSource isolates per-source failures, including
+                    // extension linkage errors, so other sources still return results.
+                    val result = searchSource(source, query.sanitize(), coroutineDispatcher) { networkToLocalManga(it) }
+                    if (isActive) {
+                        updateItem(source, result)
                     }
+                    // KMK <--
                 }
             }
                 .awaitAll()
