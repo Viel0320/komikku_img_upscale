@@ -29,8 +29,10 @@ object ImageEnhancementCache {
     private const val REAL_CUGAN_NPU_INT8_CACHE_REVISION = 1
 
     // KMK -->
-    private const val REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION = 1
-    private const val MONOCHROME_INPUT_NORMALIZATION_REVISION = 2
+    // Input decoding now preserves source resolution before enhancement.
+    private const val ENHANCEMENT_INPUT_DECODE_REVISION = 1
+    private const val REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION = 3
+    private const val MONOCHROME_INPUT_NORMALIZATION_REVISION = 3
     // KMK <--
     private const val MAX_CACHE_SIZE = 3L * 1024 * 1024 * 1024 // 3GB
     private var cacheDir: File? = null
@@ -490,15 +492,18 @@ object ImageEnhancementCache {
             }
 
             // KMK -->
-            // Real-CUGAN denoise3 pages may be re-rendered by the periodic texture
-            // guard, and monochrome inputs are normalized before inference; both
-            // change the output for the same input file.
-            if ((model == 0 || model == 1) && noise == 3) {
+            // The 75% shrink-and-restore texture guard covers every Real-CUGAN
+            // Pro page and SE denoise3 pages, and monochrome pages keep their
+            // source pixels now; all three change the output for the same file.
+            if (model == 1 || (model == 0 && noise == 3)) {
                 append("_tv$REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION")
             }
             // KMK <--
         }
-        return "${noise}x${effectiveScale}_m${model}_rs${realEsrganStyle}_w${maxWidth}_h${maxHeight}_sw${skipMaxWidth}_sh${skipMaxHeight}_t${tileSize}_p${resolvedPrecision}_fa${if (fp16Arithmetic) 1 else 0}_b${resolvedBackend}${modelRevision}_nv$MONOCHROME_INPUT_NORMALIZATION_REVISION"
+        // KMK -->
+        return "${noise}x${effectiveScale}_m${model}_rs${realEsrganStyle}_w${maxWidth}_h${maxHeight}_sw${skipMaxWidth}_sh${skipMaxHeight}_t${tileSize}_p${resolvedPrecision}_fa${if (fp16Arithmetic) 1 else 0}_b${resolvedBackend}${modelRevision}_dv$ENHANCEMENT_INPUT_DECODE_REVISION" +
+            "_nv$MONOCHROME_INPUT_NORMALIZATION_REVISION"
+        // KMK <--
     }
 
     fun getEffectiveScale(model: Int, scale: Int, realEsrganStyle: Int = Waifu2x.REAL_ESRGAN_STYLE_ANIME): Int {
