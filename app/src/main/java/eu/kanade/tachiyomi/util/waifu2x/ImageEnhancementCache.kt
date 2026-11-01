@@ -36,6 +36,14 @@ object ImageEnhancementCache {
     private const val REAL_ESRGAN_PHOTO_NCNN_REVISION = 2
     // KMK <--
     private const val MAX_CACHE_SIZE = 3L * 1024 * 1024 * 1024 // 3GB
+
+    // KMK -->
+    // libwebp stores width/height in 14 bits, so Bitmap.compress(WEBP_*) fails
+    // (returns false, no exception) for any side above 16383px. The enhanced
+    // output must be clamped to this before it reaches writeToCache, or the
+    // save silently produces no cache file and no event.
+    const val WEBP_MAX_DIMENSION = 16383
+    // KMK <--
     private var cacheDir: File? = null
 
     // KMK -->

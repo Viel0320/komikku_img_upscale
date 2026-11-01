@@ -363,15 +363,26 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                         currentCoroutineContext().ensureActive()
 
                                                         // --- Output Resolution Limit (prevent Canvas errors) ---
-                                                        val textureLimit = eu.kanade.tachiyomi.util.system.GLUtil.DEVICE_TEXTURE_LIMIT
+                                                        // KMK --> The cap also includes the WebP encoder's
+                                                        // 16383px hard limit: with the processing size set
+                                                        // to 0x0, a tall webtoon page scales to heights above
+                                                        // 16383 while a 16384 device texture limit let them
+                                                        // pass, and the cache write then failed silently with
+                                                        // no Saved/Skipped event, so polling re-ran the whole
+                                                        // inference on every heal attempt before giving up
+                                                        // and falling back to the original image.
+                                                        val textureLimit = min(
+                                                            eu.kanade.tachiyomi.util.system.GLUtil.DEVICE_TEXTURE_LIMIT,
+                                                            ImageEnhancementCache.WEBP_MAX_DIMENSION,
+                                                        )
 
                                                         if (result.width > textureLimit || result.height > textureLimit) {
                                                             val widthRatio = textureLimit.toFloat() / result.width
                                                             val heightRatio = textureLimit.toFloat() / result.height
                                                             val ratio = min(widthRatio, heightRatio)
 
-                                                            val newWidth = (result.width * ratio).toInt().coerceAtLeast(1)
-                                                            val newHeight = (result.height * ratio).toInt().coerceAtLeast(1)
+                                                            val newWidth = (result.width * ratio).toInt().coerceIn(1, textureLimit)
+                                                            val newHeight = (result.height * ratio).toInt().coerceIn(1, textureLimit)
 
                                                             logcat(LogPriority.DEBUG) { "TachiyomiImageDecoder: Output downscale page $pageIndex: ${result.width}x${result.height} -> ${newWidth}x$newHeight (Texture Limit: $textureLimit)" }
                                                             val downscaled = nativeScaleBitmap(result, newWidth, newHeight)
