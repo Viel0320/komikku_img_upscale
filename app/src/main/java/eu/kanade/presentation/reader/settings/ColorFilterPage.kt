@@ -525,6 +525,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val processMaxHeight by screenModel.preferences.realCuganMaxSizeHeight().collectAsState()
         ResolutionLimitFields(
             heading = stringResource(KMR.strings.reader_processing_resolution),
+            summary = stringResource(KMR.strings.reader_processing_resolution_summary),
             width = processMaxWidth,
             height = processMaxHeight,
             onWidthChange = { screenModel.preferences.realCuganMaxSizeWidth().set(it) },
@@ -535,6 +536,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val skipMaxHeight by screenModel.preferences.realCuganSkipMaxSizeHeight().collectAsState()
         ResolutionLimitFields(
             heading = stringResource(KMR.strings.reader_max_resolution),
+            summary = stringResource(KMR.strings.reader_max_resolution_summary),
             width = skipMaxWidth,
             height = skipMaxHeight,
             onWidthChange = { screenModel.preferences.realCuganSkipMaxSizeWidth().set(it) },
@@ -550,9 +552,15 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
 }
 
 // KMK -->
+/**
+ * Width/height limit pair for the enhancement pipeline. The two headings share this layout but
+ * clamp different stages: "processing resolution" downscales the model input (prescale), while
+ * "max resolution" skips enhancement entirely when the source page exceeds it (skip gate).
+ */
 @Composable
 private fun ResolutionLimitFields(
     heading: String,
+    summary: String,
     width: Int,
     height: Int,
     onWidthChange: (Int) -> Unit,
@@ -560,6 +568,15 @@ private fun ResolutionLimitFields(
 ) {
     Column {
         HeadingItem(heading)
+        Text(
+            text = summary,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = SettingsItemsPaddings.Horizontal)
+                .padding(bottom = 4.dp),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()

@@ -240,7 +240,9 @@
     <string name="reader_precision_bf16">BF16</string>
     <string name="reader_fp16_arithmetic">FP16 运算</string>
     <string name="reader_processing_resolution">最大处理分辨率</string>
+    <string name="reader_processing_resolution_summary">在图像进入模型前先行缩小，以限制显存占用和处理耗时；结果仍会由模型放大</string>
     <string name="reader_max_resolution">最大分辨率</string>
+    <string name="reader_max_resolution_summary">超过此尺寸的页面不做增强，保留原图显示</string>
     <string name="reader_resolution_width">宽度(0 为不限制)</string>
     <string name="reader_resolution_height">高度(0 为不限制)</string>
     <string name="reader_show_processing_status">在左下角显示处理状态</string>

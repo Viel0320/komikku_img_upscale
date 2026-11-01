@@ -268,7 +268,9 @@
     <string name="reader_precision_bf16">BF16</string>
     <string name="reader_fp16_arithmetic">FP16 arithmetic</string>
     <string name="reader_processing_resolution">Max processing resolution</string>
+    <string name="reader_processing_resolution_summary">Shrinks the image before it enters the model to limit memory and speed; the result is still enlarged by the model</string>
     <string name="reader_max_resolution">Max resolution</string>
+    <string name="reader_max_resolution_summary">Pages larger than this are never enhanced and keep the original image</string>
     <string name="reader_resolution_width">Width (0 unlimited)</string>
     <string name="reader_resolution_height">Height (0 unlimited)</string>
     <string name="reader_show_processing_status">Show processing status in bottom-left corner</string>

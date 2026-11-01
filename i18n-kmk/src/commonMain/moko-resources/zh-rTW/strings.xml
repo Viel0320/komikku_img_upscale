@@ -235,7 +235,9 @@
     <string name="reader_precision_bf16">BF16</string>
     <string name="reader_fp16_arithmetic">FP16 運算</string>
     <string name="reader_processing_resolution">最大處理解析度</string>
+    <string name="reader_processing_resolution_summary">在影像進入模型前先行縮小，以限制顯示記憶體占用與處理耗時；結果仍會由模型放大</string>
     <string name="reader_max_resolution">最大解析度</string>
+    <string name="reader_max_resolution_summary">超過此尺寸的頁面不做強化，保留原圖顯示</string>
     <string name="reader_resolution_width">寬度(0 為不限制)</string>
     <string name="reader_resolution_height">高度(0 為不限制)</string>
     <string name="reader_show_processing_status">在左下角顯示處理狀態</string>
