@@ -116,7 +116,12 @@ abstract class PagerViewer(
         pager.isFocusable = false
         // KMK -->
         val preferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
-        pager.offscreenPageLimit = if (preferences.realCuganEnabled().get()) preferences.realCuganPreloadSize().get() else 1
+        // Enhancement requests retain stream factories, while holders retain decoded images.
+        // A larger enhancement queue must not allocate that many full views on both sides,
+        // so the offscreen window is capped regardless of the enhancement preload size
+        // (upstream 1.3.17 decoupled it entirely; the disabled default stays 1 here).
+        pager.offscreenPageLimit =
+            if (preferences.realCuganEnabled().get()) minOf(2, preferences.realCuganPreloadSize().get()) else 1
         // KMK <--
         pager.id = R.id.reader_pager
         pager.adapter = adapter
@@ -440,7 +445,10 @@ abstract class PagerViewer(
         val currentItem = pager.currentItem
         // KMK -->
         val preferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
-        pager.offscreenPageLimit = if (preferences.realCuganEnabled().get()) preferences.realCuganPreloadSize().get() else 1
+        // Capped with the same rationale as the init block: a larger enhancement queue
+        // must not allocate that many full offscreen views.
+        pager.offscreenPageLimit =
+            if (preferences.realCuganEnabled().get()) minOf(2, preferences.realCuganPreloadSize().get()) else 1
         // KMK <--
         adapter.refresh()
         pager.adapter = adapter

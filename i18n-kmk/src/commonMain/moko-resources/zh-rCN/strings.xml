@@ -220,6 +220,7 @@
     <string name="reader_npu_model_preparing">正在为 NPU 准备此模型，你可以继续阅读。</string>
     <string name="reader_npu_model_ready">NPU 模型已就绪，已保存供后续使用。</string>
     <string name="reader_npu_model_failed">此模型的 NPU 准备失败，将显示原图。</string>
+    <string name="reader_npu_model_requires_fp16">当前模型需要 FP16，但此设备不支持。请选择 Real-ESRGAN Anime 的 INT8 模式，或使用 Vulkan。</string>
     <string name="reader_model">模型</string>
     <string name="reader_model_style">模型风格</string>
     <string name="reader_denoise_level">降噪等级</string>
@@ -249,7 +250,8 @@
     <string name="reader_status_processed">已增强</string>
     <string name="reader_status_processing">处理中</string>
     <string name="reader_status_queued">排队中</string>
+    <string name="reader_status_preparing">模型准备中…</string>
     <string name="reader_status_finishing">即将完成…</string>
     <string name="reader_status_enhancing">增强中</string>
-    <string name="reader_status_enhancing_progress">增强中… %1$d%%</string>
+    <string name="reader_status_enhancing_progress">%1$d%%</string>
 </resources>

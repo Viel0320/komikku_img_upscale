@@ -1,3 +1,12 @@
+// KMK -->
+// FP16 runtime capability probe (upstream fd047fb, without the W8A16 parts).
+// Asks the actual HTP backend instead of a chipset list, so integer-only SoCs
+// are caught before the FP16 context compile fails with a validation error.
+// KMK <--
+#if MIHON_ENABLE_QNN
+#include "qnn_fp16_support.h"
+#include <dlfcn.h>
+#endif
 #include "spatial_qnn_runtime.h"
 
 #include <cstdlib>
@@ -14,6 +23,59 @@ std::string utf(JNIEnv *env, jstring value) {
   return result;
 }
 } // namespace
+
+// KMK -->
+// Returns 1 when the backend accepts FP16 tensors, 0 for an integer-only
+// runtime and -1 when the capability cannot be determined. The Kotlin side
+// caches only conclusive results so transient failures are retried.
+extern "C" JNIEXPORT jint JNICALL
+Java_eu_kanade_tachiyomi_util_qnn_QnnModelContexts_nativeFp16Support(
+    JNIEnv *env, jobject, jstring native_library_dir) {
+  std::lock_guard<std::mutex> lock(compile_mutex);
+  const std::string paths =
+      utf(env, native_library_dir) +
+      ";/vendor/dsp/cdsp;/vendor/lib/rfsa/cdsp;/system/vendor/lib/rfsa/cdsp";
+  setenv("ADSP_LIBRARY_PATH", paths.c_str(), 1);
+#if MIHON_ENABLE_QNN
+  void *library = dlopen("libQnnHtp.so", RTLD_NOW | RTLD_GLOBAL);
+  if (!library)
+    return -1;
+  using Get = Qnn_ErrorHandle_t (*)(const QnnInterface_t ***, uint32_t *);
+  auto get = reinterpret_cast<Get>(dlsym(library, "QnnInterface_getProviders"));
+  const QnnInterface_t **providers = nullptr;
+  uint32_t count = 0;
+  int result = -1;
+  if (get && get(&providers, &count) == QNN_SUCCESS) {
+    for (uint32_t i = 0; i < count; ++i) {
+      const auto version = providers[i]->apiVersion.coreApiVersion;
+      if (version.major != QNN_API_VERSION_MAJOR ||
+          version.minor < QNN_API_VERSION_MINOR)
+        continue;
+      const auto &api = providers[i]->QNN_INTERFACE_VER_NAME;
+      Qnn_BackendHandle_t backend = nullptr;
+      Qnn_DeviceHandle_t device = nullptr;
+      if (api.backendCreate(nullptr, nullptr, &backend) == QNN_SUCCESS) {
+        const auto status = api.deviceCreate
+                                ? api.deviceCreate(nullptr, nullptr, &device)
+                                : QNN_SUCCESS;
+        if (status == QNN_SUCCESS ||
+            status == QNN_DEVICE_ERROR_UNSUPPORTED_FEATURE ||
+            status == QNN_DEVICE_ERROR_INVALID_CONFIG)
+          result = qnn_ondevice::fp16_support(*providers[i], backend);
+        if (device && api.deviceFree)
+          api.deviceFree(device);
+        api.backendFree(backend);
+      }
+      break;
+    }
+  }
+  dlclose(library);
+  return result;
+#else
+  return -1;
+#endif
+}
+// KMK <--
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_eu_kanade_tachiyomi_util_qnn_QnnModelContexts_nativeCompile(

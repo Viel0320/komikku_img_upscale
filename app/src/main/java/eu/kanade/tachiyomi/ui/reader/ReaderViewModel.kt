@@ -466,7 +466,13 @@ class ReaderViewModel @JvmOverloads constructor(
                     if (chapterId == -1L) chapterId = initialChapterId
 
                     // KMK -->
-                    eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.reset(page ?: 0)
+                    // Anchor the enhancer at the page the reader will actually open first: a
+                    // deeplink page, or the chapter's saved position. A reset anchored at 0
+                    // leaves the first-frame gate waiting on page 0 while the first displayed
+                    // frame is the saved position (upstream 1.3.17).
+                    eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.reset(
+                        page ?: chapterList.first { chapterId == it.chapter.id }.chapter.last_page_read,
+                    )
                     // KMK <--
 
                     val context = Injekt.get<Application>()
@@ -682,6 +688,12 @@ class ReaderViewModel @JvmOverloads constructor(
         if (page is InsertPage) {
             return
         }
+
+        // KMK -->
+        // Tell the loader which page is visible so it can prioritize its download; an
+        // offscreen holder binding must not change that priority.
+        page.chapter.pageLoader?.onPageSelected(page)
+        // KMK <--
 
         // SY -->
         mutableState.update { it.copy(currentPageText = currentPageText) }

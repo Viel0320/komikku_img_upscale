@@ -73,6 +73,23 @@ object ImageEnhancementCache {
                             )
                         }
                     }
+                } catch (e: OutOfMemoryError) {
+                    // KMK --> Encoding an enhanced page is optional; record the page as
+                    // skipped so polling stops re-requesting it, and keep draining the
+                    // channel so one failed encode cannot stall the writer (upstream 1.3.17).
+                    android.util.Log.e(
+                        "ImageEnhancementCache",
+                        "Not enough memory to cache page ${request.pageIndex}",
+                        e,
+                    )
+                    saveSkippedToCache(
+                        request.mangaId,
+                        request.chapterId,
+                        request.pageIndex,
+                        request.configHash,
+                        request.pageVariant,
+                    )
+                    // KMK <--
                 } catch (t: Throwable) {
                     android.util.Log.e(
                         "ImageEnhancementCache",
@@ -571,7 +588,12 @@ object ImageEnhancementCache {
     ): String {
         val effectiveScale = getEffectiveScale(model, scale, realEsrganStyle)
         val resolvedBackend = Waifu2x.resolveProcessingBackend(processingBackend, model, effectiveScale)
-        val resolvedPrecision = Waifu2x.resolvePrecision(precision, resolvedBackend, model, effectiveScale)
+        // KMK -->
+        // The style gates INT8 (Anime only), so it must take part in precision
+        // resolution and therefore in the cache key.
+        val resolvedPrecision =
+            Waifu2x.resolvePrecision(precision, resolvedBackend, model, effectiveScale, realEsrganStyle)
+        // KMK <--
         val modelRevision = buildString {
             // KMK -->
             // The Real-ESRGAN Photo NCNN graph was regenerated with corrected resize

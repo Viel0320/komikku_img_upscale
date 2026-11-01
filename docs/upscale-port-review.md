@@ -331,3 +331,44 @@
 真机验证:快速翻页 + 停留场景下,(1,2)/(3,4)/(7,8)/(17,18)/(19,20) 等曾被剪枝/滞留的 spread 全部被自动恢复换入;修复前必现的"处理中"卡死不再出现。诊断日志保留集(排查用临时日志已剔除):`Re-queueing sibling/primary`(WARN)、`Poll degraded to raw`(WARN)、`Fallback cannot merge/invalid entry`(WARN)、`ImageEnhancer` 的数据源丢弃 WARN 与首帧 target 不匹配 INFO。
 
 验证:`spotlessCheck`、`:app:compileDebugKotlin`、waifu2x 包 JVM 单测通过。
+
+## 9. 1.3.17 增强部分同步 — b8b5da7 → cffd495 净差异
+
+参照系:基线为已移植的 1.3.16(b8b5da7,cf6eacd+b8b5da7 合成),上游推进至 stable 1.3.17(cffd495)。上游 1.3.16 之后共 8 个提交,其中 fd047fb(beta 1 端上 W8A16 校准)被 b8f90ed(beta 2)整体撤销、784e483(独立包名/签名/图标)不适用、7f4a8de 的本地画廊大部分不适用。本次移植范围:**增强相关内容 = 7f4a8de 的 loader 可见页优先级意图 + 9fd1393(beta 4)+ 0ee1e20(测试对齐)+ 0f271bf(最终修正)的净语义**。beta 2(W8A8 模型选项)此前已单独移植(见暂存区,§9.4 顺带补缺)。
+
+### 9.1 语义重放(KMK 标记;上游 1.3.17 changelog 对应)
+
+| 文件 | 重放内容 |
+|---|---|
+| `ImageEnhancer.kt` | ① `ProcessingPhase`(PREPARING/ENHANCING/SAVING)+ `activePhase`,claim 时置 PREPARING;`processingPhase()`(活跃且未取消才返回,否则 null 供状态轮询回退)/`updateProcessingPhase()`;② worker 循环与 `processRequest` 的 OOM 捕获(后者 `saveSkippedToCache` 后保留原图,防止轮询无限重试);③ `ImageRequest.allowHardware(false)`(硬件位图喂不了原生推理/缓存编码);④ 抢占阈值放宽:`activePageIndex < targetPageIndex - 2`、`abs(activePageIndex - pageIndex) > 2`——普通翻页时邻近工作放行入缓存 |
+| `ImageEnhancementCache.kt` | 写盘循环 OOM 捕获:标记 skipped 后继续排水,一次失败编码不再卡死写盘协程 |
+| `Waifu2x.kt` | `resolvePrecision` NPU 分支补 `|| requestedPrecision == 4`:beta 1 遗留的端上 W8A16 设置值迁移到 INT8(仅 INT8-capable 模型),beta 2 移植缺项 |
+| `TachiyomiImageDecoder.kt` | ① `markEnhancementSkipped()`:skip 决策点(尺寸限制/NPU 不支持)、initialized-but-null 推理失败(先 `ensureActive` 区分取消)、Exception/OOM 兜底各路径统一落 skipped 标记,状态轮询不再无限重试;② ENHANCING(推理前)/SAVING(缓存交接前)阶段上报;③ 顶层 OOM 捕获返回 null |
+| `EnhancementStatusText.kt` | 新增 `Context.activeEnhancementLabel()`:PREPARING → "PREPARING MODEL..."、SAVING → "FINISHING..."、ENHANCING → 百分比/ENHANCING;null 回退 |
+| `ReaderPageImageView.kt` | ① `setProcessedSource` 加 `forceRefresh` + `currentLoadedUri` 防重(同 URI 直接关流返回,不再重置正在绘制的活跃图);② 首查(processImageHelper)缓存命中不再同步解码/变换——统一 `startEnhancementPolling`,由观察者异步换入;③ 轮询:`pageVariant` 取自 key(与去重键一致)、缓存命中分支 alreadyDisplayed 早退(完成通知丢失时仅恢复标签,跳过解码)、全部 `setProcessedSource` 调用加 revision 守卫、`activeEnhancementLabel` 阶段标签接入、OOM 捕获回退 RAW、`cacheEvents` 提升到 try 外 + `finally cancel()`(SharedFlow 永不完成,生产者不得滞留);④ 轮询 `pid==pIdx` 分支保留为副半进度回退 |
+| `PagerViewer.kt` | `offscreenPageLimit` 增强开启时钳 2(请求持有流工厂、holder 持有解码位图,更大增强队列不得等比分配全尺寸视图);关闭保持 1 |
+| `PageLoader.kt` | 新钩子 `onPageSelected(page)`:加载器获知可见页 |
+| `HttpPageLoader.kt` | ① `onPageSelected`:可见页 Error→Queue + 以 retry 同级(2)入队,离屏 holder 不得改优先级;② `internalLoadPage` 取消 → Queue(非 Error),回到页面可重新加载,不再闪错误角标;③ worker collect 原子认领(mihon 遗产竞态):同页双条目(onPageSelected 2 + holder 1 常态共存)在 `isImageInCache` 磁盘窗口内可双通过 filter 并发双下载——认领即在页监视器下离 Queue,第二个条目被 filter/认领双重拦截,`LoadPage` 与 `Queue` 在 holder 渲染相同故无 UI 闪变(上游对应机制:launchLoadOnce 原子占槽) |
+| `ReaderViewModel.kt` | ① `onPageSelected` 插入 `page.chapter.pageLoader?.onPageSelected(page)`(InsertPage 早退之后);② `ImageEnhancer.reset(page ?: chapter.last_page_read)`:首帧门控锚定实际打开页,替代锚 0 |
+| i18n-kmk base | 恢复 `reader_status_processed/finishing/enhancing`(285e7af7b 删除的阶段定义,zh-rCN/zh-rTW 孤儿翻译由此激活;processed 暂无代码引用)+ 上游新增 `reader_status_preparing`;`reader_status_enhancing_progress` 维持 096823017 的纯百分比 `%1$d%%`(主动设计,不回退) |
+| `ReaderPageImageView.kt`(回退 d68236e31) | 收尾中恢复为独立阶段:轮询 `requested && wasEnhancing` 分支从 backend 名改回 `reader_status_finishing`(推理结束、请求仍挂起的缓存写盘窗口);1.3.17 的 SAVING 阶段标签保留,两者覆盖不同窗口(解码侧/活跃请求清除后) |
+
+### 9.2 不适用项
+
+1. **HttpPageLoader 调度架构重写 N/A**:上游以 `downloadJobs`+`scheduleLoads`+`preloadWindow`(PAGES_AHEAD=8/BEHIND=2/CONCURRENT_PRELOADS=2)替换 rolling chunk;komikku 是 mihon/SY 优先级队列 + N reader 线程 + EXH 扩展(aggressivePageLoading/readerThreads/dataSaver/instantRetry),整体替换会丢弃这些行为。语义目标(可见页优先、翻页保留邻近下载、取消不丢页、同页认领串行)由 9.1 的等价点达成。
+2. **上游 onPageSelected 大简化 N/A**:上游把选中块收敛为单次 `startEnhancementPolling`(其轮询承担入队);komikku 轮询保持 §8.5/8.6 三态恢复,双页半页处理(合并换入/副半跳过标记清理)比上游完整,保留本地结构。
+3. **Webtoon strip 分支 N/A**:上游 `setStripImage` 依赖其 strip 渲染器;komikku webtoon 走 enhancedOverlay,输出已在解码器受 `DEVICE_TEXTURE_LIMIT` 约束(等价目标:防止超纹理位图进 Canvas)。
+4. **PagerPageHolder halfStatusView/smoothRefreshCombinedDisplay N/A**:fork 私有 spread 管线(§8.3-3),komikku 无对应路径;`forceRefresh=true` 的调用方不存在,参数保留为 API 对齐与去重逃生门。
+5. **轮询 `checkedCache` 单次守卫与 `shouldCheckCache || !hasRequest` 不重放**:本地 else 分支已做丢失完成事件的缓存重查(fallback 路径),且按 §8.6 有界 heal 约束重入频率;上游的无界重查与其 RENDEZVOUS 队列配套,本地语义已覆盖且边界更强。
+6. **ChapterLoader/ReaderActivity/DirectoryPageLoader 改动不移植**:requestedPage 重排/initialPageIndex/page_index intent 属上游本地画廊(beta 3);komikku 已有 SY 的 `loadChapter(chapter, page)` 与 SavedState 恢复路径。LocalBook 过滤属画廊。
+7. **androidTest 三个不移植**(§7.3-3 惯例):`ReaderEnhancementCompletionTest`、`ImageEnhancerQueueTest`、`HttpPageLoaderTest`;其 JVM 可断言部分(processingPhase 空闲契约)入 `ImageEnhancerPriorityTest`。
+8. **CHANGELOG/versionCode 不移植**(惯例)。
+9. **原图下载进度显示回退(维护者决定)**:上游的 `PageDownloadProgress.downloadProgressFlow`(Ready 钳 100、双页均值)与 loader 的 `progress=0/100` 锚点、holder 的合并指示器属于纯展示通道——增强/缓存/下载控制流均不读 `Page.progress`,移植后经确认无功能影响,按维护者决定回退,沿用本地原有的逐半页进度显示;`reader_status_preparing/finishing/enhancing` 字符串保留(阶段标签仍使用 preparing/finishing)。
+
+### 9.3 验证
+
+`spotlessApply`/`spotlessCheck`、`:app:compileDebugKotlin`、`:app:testReleaseUnitTest`(QnnPrecisionPolicyTest 5 项含新迁移用例、ImageEnhancerPriorityTest 7 项含 2 项新 phase 用例、Waifu2xBackendResolutionTest、ImageEnhancementCacheKeyTest、ImageEnhancementCacheDiscardTest)全部通过。后续本地修正(d68236e31 回退、worker 原子认领、zh 字符串补齐)后复跑 spotless 与 `:app:compileDebugKotlin` 通过。
+
+### 9.4 提交结构
+
+beta 2(W8A8)与 1.3.17 增强部分经维护者决定**合并为一次提交**(上游提交边界见 §9 开头对照,本地两批改动无相互依赖)。另含两项本地修正与一次回退:FINISHING 阶段恢复(撤销 d68236e31,见 9.1)、worker 原子认领修复双下载竞态(见 9.1 ③)、下载进度显示回退(见 9.2-9)。

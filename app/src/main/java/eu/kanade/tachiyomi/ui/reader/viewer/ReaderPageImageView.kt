@@ -976,6 +976,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     protected fun setProcessedSource(
         file: java.io.File,
         transformedSource: BufferedSource,
+        forceRefresh: Boolean = false,
     ) {
         // Ignore results produced by an older enhancement configuration: a model
         // switch clears the cache asynchronously and a slow poller can still hold
@@ -987,6 +988,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
             return
         }
         val uriString = file.toURI().toString()
+        // KMK --> Re-showing the already displayed file must not reset the active image
+        // (a spread refresh re-runs this with the same output); callers that genuinely
+        // need the swap re-run pass forceRefresh (upstream 1.3.17).
+        if (!forceRefresh && currentLoadedUri == uriString) {
+            transformedSource.close()
+            return
+        }
+        // KMK <--
         currentCachedFile = file
         updateStatus(enhancementBackendName())
 
@@ -1405,39 +1414,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
             val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
             if (cachedFile != null) {
                 logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx found in cache on first check: ${cachedFile.absolutePath}" }
-                if (secondary == null) {
-                    val transformedSource = buildEnhancedDisplaySource(cachedFile, null)
-                    if (transformedSource != null) {
-                        setProcessedSource(cachedFile, transformedSource = transformedSource)
-                        return
-                    }
-                    val source = ImageEnhancementCache.readCachedImage(cachedFile)
-                    if (source != null) {
-                        currentCachedFile = cachedFile
-                        setImageWithCurrentCrop(ImageSource.inputStream(source.inputStream()))
-                        currentLoadedUri = cachedFile.toURI().toString()
-                        isVisible = true
-                        updateStatus(enhancementBackendName())
-                    } else {
-                        viewScope.launchIO {
-                            healInvalidEnhancedCache(
-                                mId = mId,
-                                cId = cId,
-                                pIdx = pIdx,
-                                configHash = configHash,
-                                triggerData = originalData,
-                                streamFn = streamFn,
-                                forceCurrentPage = pIdx == currentGlobalPageIndex,
-                            )
-                            startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
-                        }
-                    }
-                    return
-                }
-                // Merged spread: both halves are cached, but decoding and merging two full pages
-                // must stay off the UI thread, so the polling job performs the swap instead.
+                // KMK --> The observer also handles an already-cached result. Never decode or
+                // transform a cached page inside the UI frame callback, or reset the active
+                // image while it is being drawn (upstream 1.3.17). Invalid entries go through
+                // the poll's heal path; merged spreads were already delegated to the poll.
                 startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
                 return
+                // KMK <--
             }
         }
 
@@ -1512,9 +1495,23 @@ open class ReaderPageImageView @JvmOverloads constructor(
         processingJob?.cancel()
         processingKey = key
         processingJob = viewScope.launchIO {
+            // KMK --> the variant captured in the key identifies this job; recomputing it
+            // live could diverge from the key the dedupe check compares against.
+            val pageVariant = key.pageVariant
+            // KMK <--
+            val secondary = secondaryPage
+            // KMK --> a merged spread waits on both halves; affects() only matches the
+            // primary key, so the sibling half's Saved event could never wake this poll
+            // and the swap waited on the fallback pass below. Watch the sibling key too.
+            // Declared above the try so its finally can stop the producer.
+            val secondaryKey = secondary?.chapter?.chapter?.id?.let { secCid ->
+                ImageEnhancementCache.CacheKey(mId, secCid, secondary.index, configHash, variantOf(secondary))
+            }
+            val cacheEvents = ImageEnhancementCache.events
+                .filter { it.affects(mId, cId, pIdx, configHash, pageVariant) || it.key == secondaryKey }
+                .produceIn(this)
+            // KMK <--
             try {
-                val pageVariant = enhancementVariant()
-                val secondary = secondaryPage
                 var wasEnhancing = false
                 // KMK --> bounded so a page that cannot be enhanced (for example an NPU model
                 // that failed to compile) is not decoded again on every poll pass.
@@ -1524,16 +1521,6 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 var degradedLogged = false
                 // KMK <--
                 var shouldCheckCache = true
-                // KMK --> a merged spread waits on both halves; affects() only matches the
-                // primary key, so the sibling half's Saved event could never wake this poll
-                // and the swap waited on the fallback pass below. Watch the sibling key too.
-                val secondaryKey = secondary?.chapter?.chapter?.id?.let { secCid ->
-                    ImageEnhancementCache.CacheKey(mId, secCid, secondary.index, configHash, variantOf(secondary))
-                }
-                val cacheEvents = ImageEnhancementCache.events
-                    .filter { it.affects(mId, cId, pIdx, configHash, pageVariant) || it.key == secondaryKey }
-                    .produceIn(this)
-                // KMK <--
                 // The queue may legitimately take longer than a minute for a tall webtoon page
                 // or a spread waiting on its sibling half. Keep observing while this frame is
                 // attached; onDetachedFromWindow cancels this job when it is no longer useful.
@@ -1552,10 +1539,30 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         val file = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
                         if (file != null && (secondary == null || secondaryFile != null)) {
                             logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx/$pageVariant found in cache after cache event: ${file.absolutePath}" }
+                            // KMK --> Completion notifications can be lost at a timeout boundary:
+                            // when the cached file is already on screen, only the status label
+                            // needs recovering; skip the decode entirely (upstream 1.3.17).
+                            val alreadyDisplayed = withUIContext {
+                                if (key.revision == imageRevision && currentLoadedUri == file.toURI().toString()) {
+                                    updateStatus(enhancementBackendName())
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            if (alreadyDisplayed) return@launchIO
+                            // KMK <--
                             val transformedSource = buildEnhancedDisplaySource(file, secondaryFile)
                             if (transformedSource != null) {
                                 withUIContext {
-                                    setProcessedSource(file, transformedSource = transformedSource)
+                                    // KMK --> a stale revision must not swap the image of a
+                                    // recycled or rebound view (upstream 1.3.17).
+                                    if (key.revision == imageRevision) {
+                                        setProcessedSource(file, transformedSource = transformedSource)
+                                    } else {
+                                        transformedSource.close()
+                                    }
+                                    // KMK <--
                                 }
                                 return@launchIO
                             }
@@ -1569,7 +1576,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
                             if (source != null) {
                                 withUIContext {
-                                    setProcessedSource(file, transformedSource = source)
+                                    // KMK --> same revision guard as above.
+                                    if (key.revision == imageRevision) {
+                                        setProcessedSource(file, transformedSource = source)
+                                    } else {
+                                        source.close()
+                                    }
+                                    // KMK <--
                                 }
                                 return@launchIO
                             } else {
@@ -1589,14 +1602,29 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     // Check progress status
                     val pid = Waifu2x.getProgressId()
                     val requested = ImageEnhancer.hasRequest(mId, cId, pIdx, pageVariant) || isSecondaryRequested(mId)
-                    if (pid == pIdx || (secondary != null && pid == secondary.index)) {
+                    // KMK --> Phase-aware label for the actively processed page: PREPARING while
+                    // the model/runtime is being readied, ENHANCING with live progress, SAVING
+                    // while the result is encoded into the cache; null when the attempt was just
+                    // cancelled so the generic labels take over (upstream 1.3.17).
+                    val phaseLabel = context.activeEnhancementLabel(mId, cId, pIdx, pageVariant)
+                    if (phaseLabel != null) {
+                        wasEnhancing = true
+                        updateStatus(phaseLabel)
+                    } else if (pid == pIdx || (secondary != null && pid == secondary.index)) {
+                        // KMK <--
                         wasEnhancing = true
                         // Actively enhancing: show pure percentage progress, refreshed by
                         // the poll; the number itself moving signals activity.
                         val progress = Waifu2x.getProgressPercent().coerceIn(0, 100)
                         updateStatus(context.stringResource(KMR.strings.reader_status_enhancing_progress, progress))
                     } else if (requested && wasEnhancing) {
-                        updateStatus(enhancementBackendName())
+                        // KMK --> Reverts d68236e31: the tail after active inference (a request
+                        // still registered once the progress id moved on) is its own FINISHING
+                        // stage again, not a continuation of the enhancing label. The SAVING
+                        // phase label above already covers the decode-side save window; this
+                        // branch covers the post-active window while the cache write settles.
+                        updateStatus(context.stringResource(KMR.strings.reader_status_finishing))
+                        // KMK <--
                     } else if (requested) {
                         updateStatus(context.stringResource(KMR.strings.reader_status_queued))
                     } else {
@@ -1612,7 +1640,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         if (cachedFileNow != null && (secondary == null || secondaryFileNow != null)) {
                             val transformedSource = buildEnhancedDisplaySource(cachedFileNow, secondaryFileNow)
                             if (transformedSource != null) {
-                                withUIContext { setProcessedSource(cachedFileNow, transformedSource = transformedSource) }
+                                withUIContext {
+                                    // KMK --> stale revision must not swap a recycled view's image.
+                                    if (key.revision == imageRevision) {
+                                        setProcessedSource(cachedFileNow, transformedSource = transformedSource)
+                                    } else {
+                                        transformedSource.close()
+                                    }
+                                    // KMK <--
+                                }
                                 return@launchIO
                             }
                             if (secondaryFileNow != null) {
@@ -1623,7 +1659,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             }
                             val source = ImageEnhancementCache.readCachedImage(cachedFileNow)
                             if (source != null) {
-                                withUIContext { setProcessedSource(cachedFileNow, transformedSource = source) }
+                                withUIContext {
+                                    // KMK --> same revision guard as above.
+                                    if (key.revision == imageRevision) {
+                                        setProcessedSource(cachedFileNow, transformedSource = source)
+                                    } else {
+                                        source.close()
+                                    }
+                                    // KMK <--
+                                }
                                 return@launchIO
                             }
                             logcat(LogPriority.WARN) { "ReaderPageImageView: Fallback invalid entry page $pIdx" }
@@ -1721,6 +1765,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 return@launchIO
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Error in polling for page $pIdx" }
+            } catch (e: OutOfMemoryError) {
+                // KMK --> Enhancement is optional; retain the original image when the
+                // cached replacement is too large for this device (upstream 1.3.17).
+                logcat(LogPriority.ERROR, e) { "ReaderPageImageView: Not enough memory for enhanced page $pIdx" }
+                withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
+                // KMK <--
+            } finally {
+                // KMK --> The shared event flow never completes; its producer must not
+                // outlive the finished observer (upstream 1.3.17).
+                cacheEvents.cancel()
+                // KMK <--
             }
         }
     }

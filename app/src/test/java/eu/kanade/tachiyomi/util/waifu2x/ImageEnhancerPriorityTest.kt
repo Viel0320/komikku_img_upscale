@@ -4,6 +4,7 @@ import android.content.Context
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -73,6 +74,24 @@ class ImageEnhancerPriorityTest {
         assertTrue(ImageEnhancer.isFocusedTarget(4))
         assertFalse(ImageEnhancer.isFocusedTarget(6))
         assertFalse(ImageEnhancer.isFocusedTarget(5, pageVariant = "wide_right"))
+    }
+
+    @Test
+    fun processingPhaseIsNullWithoutActiveRequest() {
+        // JVM port of upstream's androidTest completion cases that need a real active
+        // request: the status contract that reader polling relies on is testable here.
+        // With nothing active, the reader must fall back to its generic labels.
+        assertFalse(ImageEnhancer.isActivelyProcessing(1L, 2L, 0, ""))
+        assertNull(ImageEnhancer.processingPhase(1L, 2L, 0, ""))
+    }
+
+    @Test
+    fun phaseUpdatesAreIgnoredWithoutActiveRequest() {
+        // A stale phase write (for example from a decode that outlived its request) must
+        // be a no-op, never resurrect state for a page that is not being processed.
+        ImageEnhancer.updateProcessingPhase(1L, 2L, 0, "", ImageEnhancer.ProcessingPhase.ENHANCING)
+
+        assertNull(ImageEnhancer.processingPhase(1L, 2L, 0, ""))
     }
 
     private fun request(page: Int, priority: Int, seq: Int): ImageEnhancer.EnhanceRequest {

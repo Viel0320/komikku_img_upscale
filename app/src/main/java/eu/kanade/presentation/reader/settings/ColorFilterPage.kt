@@ -164,6 +164,11 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val realCuganNoiseLevel by screenModel.preferences.realCuganNoiseLevel().collectAsState()
         val realCuganScale by screenModel.preferences.realCuganScale().collectAsState()
         val processingBackend by screenModel.preferences.realCuganProcessingBackend().collectAsState()
+        // KMK -->
+        // Collected early: the precision selects the QNN asset variant and keys
+        // the preparation state.
+        val precision by screenModel.preferences.realCuganPrecision().collectAsState()
+        // KMK <--
         val npuDeviceAvailable = remember { Waifu2x.isQualcommNpuAvailable() }
         val mediaTekDeviceAvailable = remember { MediaTekNpu.isDeviceSupported() }
         val useQualcommNpu = processingBackend == Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU
@@ -178,14 +183,35 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val qnnPreparationStates by QnnModelContexts.states.collectAsState()
         val mediaTekPreparationStates by MediaTekNpu.states.collectAsState()
         val preparationStates = if (useMediaTekNpu) mediaTekPreparationStates else qnnPreparationStates
+        // KMK -->
+        // Probed before preparation so the FP16 chip and the hint below react
+        // even when a cached context short-circuits the normal flow.
+        val fp16Supported by QnnModelContexts.fp16Supported.collectAsState()
+        // FP16 and W8A8 preparations are tracked and cached separately.
+        val preparationKey = qnnModelName?.let {
+            if (useQualcommNpu) QnnModelContexts.stateKey(it, precision) else it
+        }
+        // KMK <--
         var preparationRetry by remember { mutableStateOf(0) }
-        LaunchedEffect(processingBackend, qnnModelName, preparationRetry) {
+        LaunchedEffect(processingBackend, qnnModelName, precision, preparationRetry) {
             val modelName = qnnModelName ?: return@LaunchedEffect
             withContext(Dispatchers.IO) {
                 if (useMediaTekNpu) {
                     MediaTekNpu.prepare(context, modelName, retry = preparationRetry > 0)
                 } else {
-                    QnnModelContexts.prepare(context, modelName, retry = preparationRetry > 0)
+                    // KMK -->
+                    // An unsupported FP16 runtime falls back to the bundled INT8
+                    // asset when the model has one; otherwise the conclusive probe
+                    // result is surfaced by the hint below and float preparation
+                    // is skipped instead of failing with an unusable retry.
+                    val supported = QnnModelContexts.detectFp16Support(context)
+                    if (precision !in QnnModelContexts.supportedPrecisions(modelName)) return@withContext
+                    if (supported == false && precision == 0 && QnnModelContexts.supportsW8a8(modelName)) {
+                        screenModel.preferences.realCuganPrecision().set(QnnModelContexts.PRECISION_W8A8)
+                        return@withContext
+                    }
+                    QnnModelContexts.prepare(context, modelName, retry = preparationRetry > 0, precision = precision)
+                    // KMK <--
                 }
             }
         }
@@ -275,21 +301,35 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         }
 
         if (qnnModelName != null) {
-            val status = preparationStates[qnnModelName]
-            Text(
-                text = stringResource(
-                    when (status) {
-                        is NpuModelStatus.Ready -> KMR.strings.reader_npu_model_ready
-                        is NpuModelStatus.Failed -> KMR.strings.reader_npu_model_failed
-                        else -> KMR.strings.reader_npu_model_preparing
-                    },
-                ),
-                modifier = Modifier.padding(horizontal = 24.dp),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (status is NpuModelStatus.Failed) {
-                TextButton(onClick = { preparationRetry++ }, modifier = Modifier.padding(horizontal = 12.dp)) {
-                    Text(stringResource(MR.strings.action_retry))
+            // KMK -->
+            val status = preparationStates[preparationKey]
+            // The probe is conclusive for float models: retrying QNN preparation
+            // on an integer-only runtime can never succeed, so only the hint
+            // shows. INT8-capable models keep the normal status because the
+            // W8A8 path works there.
+            if (useQualcommNpu && fp16Supported == false && !QnnModelContexts.supportsW8a8(qnnModelName)) {
+                Text(
+                    text = stringResource(KMR.strings.reader_npu_model_requires_fp16),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                // KMK <--
+                Text(
+                    text = stringResource(
+                        when (status) {
+                            is NpuModelStatus.Ready -> KMR.strings.reader_npu_model_ready
+                            is NpuModelStatus.Failed -> KMR.strings.reader_npu_model_failed
+                            else -> KMR.strings.reader_npu_model_preparing
+                        },
+                    ),
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (status is NpuModelStatus.Failed) {
+                    TextButton(onClick = { preparationRetry++ }, modifier = Modifier.padding(horizontal = 12.dp)) {
+                        Text(stringResource(MR.strings.action_retry))
+                    }
                 }
             }
         }
@@ -432,25 +472,42 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
             }
         }
 
-        val precision by screenModel.preferences.realCuganPrecision().collectAsState()
-        val supportedPrecisions = if (useNpu) {
-            listOf(0)
-        } else {
-            listOf(0, 1, 3)
+        // KMK -->
+        // INT8 (W8A8) joins the row only for the model whose quantized DLC ships;
+        // a stale precision resolves through the same policy the reader uses.
+        val supportedPrecisions = when {
+            useQualcommNpu -> QnnModelContexts.supportedPrecisions(qnnModelName)
+            useMediaTekNpu -> listOf(0)
+            else -> listOf(0, 1, 3)
         }
-        LaunchedEffect(useNpu, realCuganModel, precision) {
+        LaunchedEffect(processingBackend, qnnModelName, precision) {
             if (precision !in supportedPrecisions) {
-                screenModel.preferences.realCuganPrecision().set(supportedPrecisions.first())
+                screenModel.preferences.realCuganPrecision().set(
+                    Waifu2x.resolvePrecision(
+                        precision,
+                        processingBackend,
+                        realCuganModel,
+                        realCuganScale,
+                        realEsrganStyle,
+                    ),
+                )
             }
         }
+        // KMK <--
         SettingsChipRow(KMR.strings.reader_precision) {
             listOf(
                 0 to stringResource(KMR.strings.reader_precision_fp16),
                 1 to stringResource(KMR.strings.reader_precision_fp32),
                 3 to stringResource(KMR.strings.reader_precision_bf16),
+                // KMK -->
+                QnnModelContexts.PRECISION_W8A8 to "INT8 (W8A8)",
+                // KMK <--
             ).filter { (value, _) -> value in supportedPrecisions }.map { (value, name) ->
                 FilterChip(
                     selected = precision == value,
+                    // KMK --> Disable FP16 on runtimes the probe found integer-only.
+                    enabled = !(useQualcommNpu && value == 0 && fp16Supported == false),
+                    // KMK <--
                     onClick = { screenModel.preferences.realCuganPrecision().set(value) },
                     label = { Text(name) },
                 )

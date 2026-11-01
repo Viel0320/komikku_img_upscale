@@ -248,6 +248,7 @@
     <string name="reader_npu_model_preparing">Preparing this model for NPU. You can continue reading.</string>
     <string name="reader_npu_model_ready">NPU model ready. Saved for future use.</string>
     <string name="reader_npu_model_failed">Unable to prepare this NPU model. Showing the original image.</string>
+    <string name="reader_npu_model_requires_fp16">This model requires FP16, which is unavailable on this device. Select Real-ESRGAN Anime with INT8 or use Vulkan.</string>
     <string name="reader_model">Model</string>
     <string name="reader_model_style">Model style</string>
     <string name="reader_denoise_level">Denoise level</string>
@@ -276,5 +277,9 @@
     <string name="reader_status_raw">RAW</string>
     <string name="reader_status_processing">PROCESSING</string>
     <string name="reader_status_queued">QUEUED</string>
+    <string name="reader_status_processed">PROCESSED</string>
+    <string name="reader_status_preparing">PREPARING MODEL...</string>
+    <string name="reader_status_finishing">FINISHING...</string>
+    <string name="reader_status_enhancing">ENHANCING</string>
     <string name="reader_status_enhancing_progress">%1$d%%</string>
 </resources>

@@ -81,7 +81,23 @@ internal class HttpPageLoader(
                     }
                 }
                     .filter { it.status == Page.State.Queue }
-                    .collect(::internalLoadPage)
+                    .collect { page ->
+                        // KMK -->
+                        // Atomic claim. Two entries for the same page routinely coexist: the
+                        // visible page is offered by both onPageSelected (priority 2) and the
+                        // holder bind (priority 1). Leaving Queue here under the page monitor
+                        // means only one worker ever enters internalLoadPage; a second entry
+                        // is dropped either by the filter above or by this check. LoadPage
+                        // renders identically to Queue in the holder, so the claim stays
+                        // invisible (upstream 1.3.17 fixes the same race with an atomic slot
+                        // claim in launchLoadOnce).
+                        synchronized(page) {
+                            if (page.status != Page.State.Queue) return@collect
+                            page.status = Page.State.LoadPage
+                        }
+                        internalLoadPage(page)
+                        // KMK <--
+                    }
             }
             // EXH -->
         }
@@ -151,6 +167,22 @@ internal class HttpPageLoader(
             }
         }
     }
+
+    // KMK -->
+    /**
+     * Gives the visible page the same priority as a user retry so a slow or stale preload can
+     * never delay the page being read. Offscreen holders keep their lower priority: only this
+     * callback (from the reader's page-change path) may promote a page.
+     */
+    override fun onPageSelected(page: ReaderPage) {
+        if (page.status is Page.State.Error) {
+            page.status = Page.State.Queue
+        }
+        if (page.status == Page.State.Queue) {
+            queue.offer(PriorityPage(page, 2))
+        }
+    }
+    // KMK <--
 
     /**
      * Retries a page. This method is only called from user interaction on the viewer.
@@ -263,10 +295,15 @@ internal class HttpPageLoader(
             // KMK <--
             page.status = Page.State.Ready
         } catch (e: Throwable) {
-            page.status = Page.State.Error(e)
+            // KMK --> A cancelled attempt is not an error: recycling holders and page turns
+            // interrupt downloads routinely. Queue the page again so returning to it can
+            // load it instead of flashing an error badge (upstream 1.3.17).
             if (e is CancellationException) {
+                page.status = Page.State.Queue
                 throw e
             }
+            // KMK <--
+            page.status = Page.State.Error(e)
         }
     }
 

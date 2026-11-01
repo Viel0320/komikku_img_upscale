@@ -15,6 +15,7 @@ import coil3.request.bitmapConfig
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.waifu2x.ImageEnhancementCache
+import eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer
 import eu.kanade.tachiyomi.util.waifu2x.Waifu2x
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -235,8 +236,10 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         logcat(LogPriority.DEBUG) {
                                             "TachiyomiImageDecoder: Skipping enhancement for page $pageIndex - source ${bitmap.width}x${bitmap.height} exceeds max resolution ${skipMaxWidth}x$skipMaxHeight"
                                         }
-                                        ImageEnhancementCache.saveSkippedToCache(mangaId, chapterId, pageIndex, configHash, pageVariant)
+                                        // KMK --> the skip marker is written once at the inference
+                                        // decision below, which also covers the NPU-unsupported path.
                                         shouldSkipEnhancement = true
+                                        // KMK <--
                                     }
 
                                     // --- Performance Mode ---
@@ -327,6 +330,17 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                     }
                                                 }
                                                 val processed = if (initialized) {
+                                                    // KMK --> the reader labels this stage "enhancing"
+                                                    // with live progress once native work starts.
+                                                    currentCoroutineContext().ensureActive()
+                                                    ImageEnhancer.updateProcessingPhase(
+                                                        mangaId,
+                                                        chapterId,
+                                                        pageIndex,
+                                                        pageVariant,
+                                                        ImageEnhancer.ProcessingPhase.ENHANCING,
+                                                    )
+                                                    // KMK <--
                                                     when (model) {
                                                         0, 1 -> Waifu2x.processRealCugan(enhancementInput, pageIndex)
                                                         Waifu2x.MODEL_REAL_ESRGAN_ANIME -> Waifu2x.processRealESRGAN(enhancementInput, pageIndex)
@@ -373,6 +387,15 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                             // the cache writer receives its own copy and encodes it
                                                             // off the inference thread instead of blocking it.
                                                             ownsResult = false
+                                                            // KMK --> the reader labels the encode hand-off "finishing".
+                                                            ImageEnhancer.updateProcessingPhase(
+                                                                mangaId,
+                                                                chapterId,
+                                                                pageIndex,
+                                                                pageVariant,
+                                                                ImageEnhancer.ProcessingPhase.SAVING,
+                                                            )
+                                                            // KMK <--
                                                             // Settled before the enqueue can suspend, so a
                                                             // cancellation still hands the bitmap back for recycling.
                                                             enhancedResult = result
@@ -403,8 +426,24 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                     } finally {
                                                         if (ownsResult && result !== bitmap && !result.isRecycled) result.recycle()
                                                     }
+                                                } else {
+                                                    // KMK --> A cancelled native call also returns null, so cancel
+                                                    // first: only a real initialization/inference failure is
+                                                    // remembered as skipped, otherwise polling could retry a
+                                                    // dead request forever (upstream 1.3.17).
+                                                    currentCoroutineContext().ensureActive()
+                                                    markEnhancementSkipped()
+                                                    logcat(LogPriority.WARN) {
+                                                        "TachiyomiImageDecoder: Enhancement unavailable for page $pageIndex/$pageVariant; keeping original"
+                                                    }
+                                                    // KMK <--
                                                 }
                                             } // KMK --> end withContext(enhanceDispatcher)
+                                        } else {
+                                            // KMK --> skipped pages (size limit, unsupported NPU model) are
+                                            // remembered so polling reports RAW instead of retrying forever.
+                                            markEnhancementSkipped()
+                                            // KMK <--
                                         }
                                     } finally {
                                         // KMK --> the prescaled input is temporary; the original bitmap
@@ -419,6 +458,10 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                     enhancedResult = null
                                     throw e
                                 } catch (e: Exception) {
+                                    // KMK --> a failed enhancement attempt is remembered as skipped;
+                                    // polling then reports RAW instead of re-queueing the page.
+                                    markEnhancementSkipped()
+                                    // KMK <--
                                     logcat(LogPriority.ERROR, e) { "TachiyomiImageDecoder: Failed to enhance image on-the-fly" }
                                 }
                             }
@@ -448,6 +491,15 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "TachiyomiImageDecoder: Critical failure during decode" }
                 null
+            } catch (e: OutOfMemoryError) {
+                // KMK --> decoding is optional: record the page as skipped and let the
+                // reader keep its previous image instead of crashing the process.
+                markEnhancementSkipped()
+                logcat(LogPriority.ERROR, e) {
+                    "TachiyomiImageDecoder: Not enough memory; keeping original reader image"
+                }
+                null
+                // KMK <--
             } finally {
                 // KMK --> nothing outlives this call: on any failure or cancellation the
                 // decoded bitmap is released here instead of leaking until GC.
@@ -458,6 +510,25 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
             }
         }
     }
+
+    // KMK -->
+    /**
+     * Persists a "skipped" marker for this page so status polling and retry heuristics treat
+     * the enhancement as intentionally unavailable instead of endlessly re-requesting it.
+     * Non-reader requests (covers, previews) carry no reader metadata and are ignored.
+     */
+    private fun markEnhancementSkipped() {
+        if (!options.enhanced || options.mangaId == -1L || options.chapterId == -1L || options.pageIndex < 0) return
+        val preferences = Injekt.get<ReaderPreferences>()
+        ImageEnhancementCache.saveSkippedToCache(
+            options.mangaId,
+            options.chapterId,
+            options.pageIndex,
+            ImageEnhancementCache.getConfigHash(preferences),
+            options.pageVariant,
+        )
+    }
+    // KMK <--
 
     // KMK -->
     private fun decodeCachedEnhancedImage(): Bitmap? {

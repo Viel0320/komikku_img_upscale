@@ -29,6 +29,14 @@ abstract class PageLoader {
      */
     open suspend fun loadPage(page: ReaderPage) {}
 
+    // KMK -->
+    /**
+     * The viewer selected this page. Called from the reader's page-change path so loaders can
+     * give the visible page download priority; offscreen holders must not change it.
+     */
+    open fun onPageSelected(page: ReaderPage) {}
+    // KMK <--
+
     /**
      * Retries the given [page] in case it failed to load. This method only makes sense when an
      * online source is used.

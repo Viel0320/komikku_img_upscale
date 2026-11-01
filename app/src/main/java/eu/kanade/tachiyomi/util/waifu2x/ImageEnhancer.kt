@@ -4,6 +4,7 @@ import android.content.Context
 import coil3.SingletonImageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
+import coil3.request.allowHardware
 import eu.kanade.tachiyomi.data.coil.chapterId
 import eu.kanade.tachiyomi.data.coil.customDecoder
 import eu.kanade.tachiyomi.data.coil.enhanced
@@ -29,6 +30,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 object ImageEnhancer {
+    // KMK -->
+    // Distinguishes what the actively processed page is doing so the reader can label
+    // model preparation, native inference and cache saving separately (upstream 1.3.17).
+    enum class ProcessingPhase { PREPARING, ENHANCING, SAVING }
+
+    @Volatile
+    private var activePhase = ProcessingPhase.PREPARING
+    // KMK <--
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     // Values identify individual attempts: cancelling and retrying a page can happen
     // within the same generation while the previous attempt is still unwinding.
@@ -176,6 +186,11 @@ object ImageEnhancer {
                     if (e !is InterruptedException && e !is CancellationException) {
                         logcat(LogPriority.ERROR, e) { "ImageEnhancer: Worker loop error" }
                     }
+                } catch (e: OutOfMemoryError) {
+                    // KMK --> An optional enhancement must not kill the process or
+                    // permanently stop the queue; drop the failed attempt and continue.
+                    logcat(LogPriority.ERROR, e) { "ImageEnhancer: Not enough memory for enhancement" }
+                    // KMK <--
                 }
             }
         }
@@ -427,6 +442,41 @@ object ImageEnhancer {
             activePageVariant == pageVariant
     }
 
+    // KMK -->
+    /**
+     * Returns what the actively processed page is currently doing, or null when the page is not
+     * the active request or its attempt was already cancelled. Null lets status polling fall
+     * back to the generic labels instead of reporting a phase that is about to be abandoned.
+     */
+    @Synchronized
+    fun processingPhase(mangaId: Long, chapterId: Long, pageIndex: Int, pageVariant: String = ""): ProcessingPhase? {
+        return activePhase.takeIf {
+            activeRequest?.cancelled?.get() == false &&
+                isActivelyProcessing(mangaId, chapterId, pageIndex, pageVariant)
+        }
+    }
+
+    /**
+     * Moves the active request's phase forward. Called from the decoder between runtime
+     * initialization, native inference and the cache hand-off; a stale or cancelled request
+     * must not update the shared phase.
+     */
+    @Synchronized
+    fun updateProcessingPhase(
+        mangaId: Long,
+        chapterId: Long,
+        pageIndex: Int,
+        pageVariant: String,
+        phase: ProcessingPhase,
+    ) {
+        if (activeRequest?.cancelled?.get() == false &&
+            isActivelyProcessing(mangaId, chapterId, pageIndex, pageVariant)
+        ) {
+            activePhase = phase
+        }
+    }
+    // KMK <--
+
     @Synchronized
     fun cancel(mangaId: Long, chapterId: Long, pageIndex: Int, pageVariant: String = "") {
         val requestKey = requestKey(mangaId, chapterId, pageIndex, pageVariant)
@@ -490,6 +540,10 @@ object ImageEnhancer {
                 activePageIndex = req.pageIndex
                 activePageVariant = req.pageVariant
                 activeRequest = req
+                // KMK --> the claim starts a fresh attempt; the decoder advances the phase
+                // through ENHANCING and SAVING as it reaches those stages.
+                activePhase = ProcessingPhase.PREPARING
+                // KMK <--
                 nativeResetJob
             }
             // A reset must finish before this attempt can initialize a new model.
@@ -513,6 +567,10 @@ object ImageEnhancer {
             if (req.cancelled.get()) return
             val request = ImageRequest.Builder(req.context)
                 .data(data)
+                // KMK --> hardware bitmaps cannot feed the native upscaler or the cache
+                // encoder; force a software copy of the decoded page (upstream 1.3.17).
+                .allowHardware(false)
+                // KMK <--
                 .memoryCachePolicy(CachePolicy.DISABLED)
                 .customDecoder(true)
                 .enhanced(true)
@@ -532,6 +590,20 @@ object ImageEnhancer {
                 }
             }
             job.await()
+        } catch (e: OutOfMemoryError) {
+            // KMK --> A page that exhausts memory is marked skipped so polling does not
+            // retry it forever; the reader keeps showing the original image.
+            if (req.generation == generation.get() && !req.cancelled.get()) {
+                ImageEnhancementCache.saveSkippedToCache(
+                    req.mangaId,
+                    req.chapterId,
+                    req.pageIndex,
+                    currentConfigHash(),
+                    req.pageVariant,
+                )
+            }
+            logcat(LogPriority.ERROR, e) { "ImageEnhancer: Keeping original after enhancement ran out of memory" }
+            // KMK <--
         } finally {
             synchronized(this) {
                 if (activeRequest === req) {
@@ -615,7 +687,9 @@ object ImageEnhancer {
     // KMK <--
 
     private fun preemptActiveRequestIfBehindTarget() {
-        if (activePageIndex >= 0 && activePageIndex < targetPageIndex &&
+        // KMK --> Nearby work finishes and populates the cache during ordinary page turns;
+        // only a page left well behind the target is worth aborting (upstream 1.3.17).
+        if (activePageIndex >= 0 && activePageIndex < targetPageIndex - 2 &&
             !isFocusedTarget(activePageIndex, activePageVariant)
         ) {
             preemptActiveRequest("active page is behind visible target")
@@ -625,7 +699,11 @@ object ImageEnhancer {
     private fun preemptForVisibleRequest(pageIndex: Int, pageVariant: String) {
         if (activePageIndex >= 0 &&
             (activePageIndex != pageIndex || activePageVariant != pageVariant) &&
-            !isFocusedTarget(activePageIndex, activePageVariant)
+            !isFocusedTarget(activePageIndex, activePageVariant) &&
+            // KMK --> A request within a couple of pages of the visible one still serves an
+            // imminent page turn; aborting it would discard work the reader needs next.
+            kotlin.math.abs(activePageIndex - pageIndex) > 2
+            // KMK <--
         ) {
             preemptActiveRequest("visible page requested", requeue = activePageIndex > targetPageIndex)
         }
