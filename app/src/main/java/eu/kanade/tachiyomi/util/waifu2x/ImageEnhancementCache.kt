@@ -34,6 +34,10 @@ object ImageEnhancementCache {
     private const val REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION = 3
     private const val MONOCHROME_INPUT_NORMALIZATION_REVISION = 3
     private const val REAL_ESRGAN_PHOTO_NCNN_REVISION = 2
+    // KMK --> Bumped once so QNN Anime pages saved before the decoder kept the W8A8
+    // request are regenerated (upstream 1.3.18, af1633f3).
+    private const val QNN_W8A8_PAGE_CACHE_REVISION = 1
+    // KMK <--
     // KMK <--
     private const val MAX_CACHE_SIZE = 3L * 1024 * 1024 * 1024 // 3GB
 
@@ -616,6 +620,14 @@ object ImageEnhancementCache {
             // KMK <--
             if (resolvedBackend == Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU) {
                 append("_qv${Waifu2x.QNN_CONTEXT_CACHE_VERSION}_nf1")
+                // KMK --> Only W8A8-capable models (Anime on QNN) change their key: pages
+                // saved before the decoder preserved the W8A8 request can hold FP16 output
+                // or FP16 skip markers under INT8 keys, so both legacy variants must be
+                // discarded (upstream 1.3.18, af1633f3).
+                if (Waifu2x.qnnSupportsW8a8(model, effectiveScale, realEsrganStyle)) {
+                    append("_w8a8v$QNN_W8A8_PAGE_CACHE_REVISION")
+                }
+                // KMK <--
             }
             if (resolvedBackend == Waifu2x.PROCESSING_BACKEND_MEDIATEK_NPU) {
                 append("_mtv${eu.kanade.tachiyomi.util.mediatek.MediaTekNpu.CACHE_VERSION}")

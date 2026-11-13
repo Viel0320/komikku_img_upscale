@@ -812,6 +812,16 @@ object Waifu2x {
         }
     }
 
+    // KMK -->
+    /**
+     * Single W8A8-capability gate shared by [resolvePrecision] and the page-cache key,
+     * so the two can never drift. Noise is excluded on purpose: the only W8A8 asset
+     * (realesrgan-animevideov3-x2) is noise-insensitive.
+     */
+    fun qnnSupportsW8a8(model: Int, scale: Int, realEsrganStyle: Int = REAL_ESRGAN_STYLE_ANIME): Boolean =
+        QnnModelContexts.supportsW8a8(qnnModelName(model, scale, 0, realEsrganStyle))
+    // KMK <--
+
     // Preserve an explicit NPU choice even if the device/model cannot execute it.
     // Initialization then fails and the reader keeps the original image.
     fun resolveProcessingBackend(requestedBackend: Int, model: Int, scale: Int): Int =
@@ -828,12 +838,14 @@ object Waifu2x {
     ): Int {
         if (processingBackend == PROCESSING_BACKEND_QUALCOMM_NPU) {
             // INT8 is only offered for the model whose quantized DLC ships; every
-            // other NPU request resolves to FP16 (or fails on integer-only runtimes).
+            // other NPU request stays FP16 here so cache keys remain stable across
+            // devices. Integer-only runtimes fall back to W8A8 at QNN initialization
+            // instead of failing prepare().
             // KMK --> Precision value 4 was the retired on-device W8A16 setting from the
             // 1.3.17 beta 1 experiment; migrate it to INT8 for an INT8-capable model so
             // readers upgrading from a beta keep their choice (upstream 1.3.17 beta 2).
             return if ((requestedPrecision == QnnModelContexts.PRECISION_W8A8 || requestedPrecision == 4) &&
-                QnnModelContexts.supportsW8a8(qnnModelName(model, scale, 0, realEsrganStyle))
+                qnnSupportsW8a8(model, scale, realEsrganStyle)
             ) {
                 QnnModelContexts.PRECISION_W8A8
             } else {
@@ -882,7 +894,20 @@ object Waifu2x {
         if (!isQualcommNpuAvailable()) return false
         if (isQnnActive()) return true
         return runCatching {
-            val output = QnnModelContexts.prepare(context, modelName, precision = precision) ?: return false
+            // Integer-only Hexagon runtimes cannot execute the FP16 graph; fall back to
+            // the W8A8 DLC here instead of letting prepare() reject the FP16 request.
+            // resolvePrecision() deliberately does not do this so the page-cache key
+            // stays stable (upstream 1.3.18, 7af1ad0f + af1633f3).
+            val effectivePrecision = if (
+                precision == 0 &&
+                QnnModelContexts.supportsW8a8(modelName) &&
+                QnnModelContexts.detectFp16Support(context) == false
+            ) {
+                QnnModelContexts.PRECISION_W8A8
+            } else {
+                precision
+            }
+            val output = QnnModelContexts.prepare(context, modelName, precision = effectivePrecision) ?: return false
             nativeInitQnn(output.absolutePath, context.applicationInfo.nativeLibraryDir, padding)
         }.onFailure {
             android.util.Log.w("Waifu2x", "Unable to initialize Qualcomm NPU; enhancement skipped", it)

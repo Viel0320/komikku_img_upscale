@@ -2,9 +2,13 @@ package eu.kanade.tachiyomi.util.qnn
 
 import eu.kanade.tachiyomi.util.waifu2x.ImageEnhancementCache
 import eu.kanade.tachiyomi.util.waifu2x.Waifu2x
+import io.mockk.every
+import io.mockk.mockkObject
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class QnnPrecisionPolicyTest {
@@ -71,15 +75,49 @@ class QnnPrecisionPolicyTest {
 
     @Test
     fun `image cache distinguishes Anime INT8 but normalizes Photo to FP16`() {
-        fun hash(style: Int, precision: Int) = ImageEnhancementCache.getConfigHash(
-            noise = 0,
-            scale = 2,
-            model = Waifu2x.MODEL_REAL_ESRGAN_ANIME,
-            realEsrganStyle = style,
-            precision = precision,
-            processingBackend = Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU,
-        )
         assertNotEquals(hash(0, 0), hash(0, 2))
+        // Upstream 1.3.18: the retired W8A16 value and the INT8 request share the key.
+        assertEquals(hash(0, 2), hash(0, 4))
         assertEquals(hash(1, 0), hash(1, 2))
+        assertEquals(hash(1, 0), hash(1, 4))
     }
+
+    @Test
+    fun `QNN Anime drops legacy INT8 results and legacy FP16 skip markers`() {
+        // Pre-1.3.18 page keys carried no _w8a8v revision: INT8 requests were demoted to
+        // FP16 by the decoder, so both the legacy INT8 and legacy FP16 keys can hold
+        // FP16 output or FP16 skip markers and must not match the regenerated keys.
+        // This fork's hash has no upstream _ink suffix (ink filter not ported).
+        val legacyKey = "0x2_m2_rs0_w0_h0_sw0_sh0_t128_p%s_fa0_b1_qv22_nf1_dv1_nv3"
+        assertNotEquals(legacyKey.format(2), hash(0, 2))
+        assertNotEquals(legacyKey.format(0), hash(0, 0))
+        // Photo style has no W8A8 asset, so its key keeps the legacy shape.
+        assertEquals("0x2_m2_rs1_w0_h0_sw0_sh0_t128_p0_fa0_b1_qv22_nf1_dv1_nv3", hash(1, 0))
+    }
+
+    @Test
+    fun `reader still accepts the saved page after cold QNN fallback`() {
+        // The page cache must not depend on the FP16 capability state: a page saved while
+        // the device was known to be integer-only has to still match on a cold process
+        // where the detection has not run yet.
+        val fp16Supported = MutableStateFlow<Boolean?>(null)
+        mockkObject(QnnModelContexts) {
+            every { QnnModelContexts.fp16Supported } returns fp16Supported
+
+            val saveKey = ImageEnhancementCache.CacheKey(1L, 2L, 0, hash(0, 0), "")
+            val saved = ImageEnhancementCache.CacheEvent.Saved(saveKey)
+            fp16Supported.value = false
+
+            assertTrue(saved.affects(1L, 2L, 0, hash(0, 0), ""))
+        }
+    }
+
+    private fun hash(style: Int, precision: Int) = ImageEnhancementCache.getConfigHash(
+        noise = 0,
+        scale = 2,
+        model = Waifu2x.MODEL_REAL_ESRGAN_ANIME,
+        realEsrganStyle = style,
+        precision = precision,
+        processingBackend = Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU,
+    )
 }

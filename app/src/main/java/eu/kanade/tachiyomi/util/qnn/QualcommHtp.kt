@@ -3,7 +3,10 @@ package eu.kanade.tachiyomi.util.qnn
 import android.content.Context
 import android.util.Log
 
-/** Runtime HTP capability detection shared by image enhancement and spatial depth. */
+// KMK --> Spatial depth was never ported here (docs/upscale-port-review.md §2-5);
+// upstream 1.3.18 (299d82a5) dropped it from this comment too.
+/** Runtime HTP capability detection for image enhancement. */
+// KMK <--
 object QualcommHtp {
     private val supportedArchitectures = setOf(69, 73, 75, 79, 81)
 

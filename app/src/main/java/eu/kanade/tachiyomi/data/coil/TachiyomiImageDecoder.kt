@@ -250,9 +250,6 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         else -> 0
                                     }
                                     val tileSize = preferences.realCuganTileSize().get().coerceAtLeast(32)
-                                    val precision =
-                                        preferences.realCuganPrecision().get().takeIf { it == 0 || it == 1 || it == 3 }
-                                            ?: 0
                                     val fp16Arithmetic = preferences.realCuganFp16Arithmetic().get()
 
                                     // Validate scale based on model capabilities
@@ -262,6 +259,18 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         model,
                                         effectiveScale,
                                     )
+                                    // KMK --> Resolve precision through Waifu2x so an explicit W8A8 (2)
+                                    // request survives; the previous inline filter demoted it to FP16 (0),
+                                    // which fails QNN preparation on integer-only Hexagon devices
+                                    // (upstream 1.3.18, 7af1ad0f).
+                                    val precision = Waifu2x.resolvePrecision(
+                                        preferences.realCuganPrecision().get(),
+                                        processingBackend,
+                                        model,
+                                        effectiveScale,
+                                        realEsrganStyle,
+                                    )
+                                    // KMK <--
                                     // KMK --> an explicitly selected NPU only runs models with packaged
                                     // NPU support; anything else keeps the original image.
                                     if (processingBackend != Waifu2x.PROCESSING_BACKEND_VULKAN &&
