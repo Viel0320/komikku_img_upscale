@@ -4,7 +4,7 @@ This document records where every third-party binary bundled for the image
 enhancement feature comes from, under which license it is distributed, and how
 to verify the files have not been altered.
 
-Scope: everything under `app/src/main/assets/{qnn-contexts,waifu2x-models*,
+Scope: everything under `app/src/main/assets/{qnn-models,litert-models,waifu2x-models*,
 realcugan-models,realcugan-pro-models,realesrgan-models,w2xex-esrgan,
 animejanai-ncnn-vulkan,sudo-ultracompact,span-nomosuni,anime4k}` and
 `app/src/main/jniLibs/arm64-v8a/libQnnModelDlc.so`. The ncnn/vulkan inference
@@ -20,6 +20,7 @@ The enhancement port originates from
   SDK (QNN)**, extracted by MIU from Qualcomm's SDK release.
 - `assets/qnn-contexts/*.bin` — pre-serialized QNN HTP context binaries,
   compiled per model and per HTP architecture (v69/v73/v75/v79/v81).
+  *Removed* by the v1.3.15 update below.
 
 Kotlin/JNI code was ported from MIU as well; local modifications are marked
 with `// KMK -->` islands.
@@ -34,6 +35,35 @@ conservative contexts were not regenerated and are unchanged. The ncnn model
 files (`.param`/`.bin`) are byte-identical to v1.3.12. This resolves the SPAN
 FP16 black-page defect described below; FP16 contexts are now per-arch
 distinct files as expected.
+
+**2026-10-21 switch to on-device compilation (MIU v1.3.15):** following MIU
+1ab1420, the 150 bundled offline HTP contexts (~437 MB) were removed. The 15
+FP16 DLC sources now ship in `assets/qnn-models/` (extracted from the MIU
+v1.3.15 APK) and `QnnModelContexts` compiles each DLC into a per
+model/runtime/HTP-architecture context on device, persisted under
+`noBackupFilesDir` with a checksum sidecar. `assets/qnn-models/manifest.json`
+records the SHA-256 of every DLC; its digests feed the on-device context
+identity, so replacing a DLC without updating the manifest invalidates the
+persisted contexts. The same change added `assets/litert-models/`
+(16 `.tflite` sources + manifest, consumed the same way by
+`MediaTekNpu`) for the LiteRT engine scaffolding.
+
+**2026-11-01 update (MIU v1.3.17):** `assets/qnn-models/` gained the
+quantized `realesrgan-animevideov3-x2-w8a8.dlc` for integer-only HTP
+devices (16 DLCs total).
+
+**2026-11-13 audit (MIU v1.3.21):** every file in the checksum list was
+byte-compared (SHA-256) against `app-arm64-v8a-release.apk` of MIU v1.3.21
+(sha256 `d4bd897e9fefa5dc2c5139000fdc40c2a2a257b1ee25453dac9453137feee6ff`):
+all 120 model-asset members present in both are identical, so no asset
+change in MIU v1.3.18–v1.3.21 needs to be adopted and
+`QnnModelContexts.CACHE_VERSION` stays at `22`. Known intentional
+differences: the unused `assets/realesrgan-models/anime/x4` pair deleted at
+the initial port (MIU still bundles it), and `assets/w2xex-esrgan/` which
+only this repository vendors (MIU downloads it from HuggingFace at
+runtime). The checksum list was regenerated in the same pass to drop the
+removed `qnn-contexts/` entries and cover `qnn-models/`, `litert-models/`
+and `libQnnModelDlc.so`.
 
 Model files bundled directly by this repository (previously fetched at runtime
 by a download fallback that has been removed) come from the canonical upstream
@@ -73,7 +103,7 @@ source files survive check-in.
 | 2x-NomosUni-SPAN | see `ATTRIBUTION.txt` in its directory | |
 | W2xEX-ESRGAN models | see the HuggingFace repo linked above | |
 | ncnn (compiled into `libwaifu2x-jni.so`) | BSD-3-Clause | Tencent/ncnn, built from source |
-| **Qualcomm QNN runtime (`libQnnModelDlc.so`, `qnn-contexts/`)** | **Qualcomm AI Runtime SDK license** | Binary redistribution is permitted by the SDK terms with the application, but the terms must be reviewed before any public distribution; provenance is a second-hand extraction via MIU (see below) |
+| **Qualcomm QNN runtime (`libQnnModelDlc.so`, `qnn-models/*.dlc`)** | **Qualcomm AI Runtime SDK license** | Binary redistribution is permitted by the SDK terms with the application, but the terms must be reviewed before any public distribution; provenance is a second-hand extraction via MIU (see below) |
 
 **Known caveat:** the QNN artifacts were not taken from Qualcomm directly but
 extracted from MIU's release. Their integrity is covered by the checksums

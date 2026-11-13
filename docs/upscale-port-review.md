@@ -372,3 +372,48 @@
 ### 9.4 提交结构
 
 beta 2(W8A8)与 1.3.17 增强部分经维护者决定**合并为一次提交**(上游提交边界见 §9 开头对照,本地两批改动无相互依赖)。另含两项本地修正与一次回退:FINISHING 阶段恢复(撤销 d68236e31,见 9.1)、worker 原子认领修复双下载竞态(见 9.1 ③)、下载进度显示回退(见 9.2-9)。
+
+## 10. 1.3.18–1.3.21 同步审查 — QNN 精度修复采纳
+
+参照系:基线为已同步的上游 1.3.17(cffd495),上游推进至 1.3.21(7aeb8edab),共 12 个提交、4 个版本(v1.3.18/19/20/21)。增强相关仅 2.5 个提交:`7af1ad0f`(INT8 精度保持)、`af1633f3`(INT8 回退时缓存稳定,部分回退前者)、`41fd114c`(二者合并入 master 的载体)、`8a519347`(仅测试日志格式化)。其余为 WebDAV/OneDrive 云同步与发布杂项。
+
+### 10.1 采纳(净语义 = 7af1ad0f + af1633f3 最终态)
+
+上游两提交是"先做后修"关系:`7af1ad0f` 让 `resolvePrecision` 在 FP16 不支持时直接回退 W8A8,`af1633f3` 发现这会让页面缓存键随设备能力漂移(同配置不同机不同键),把回退下沉到 QNN 初始化处。净语义三点:
+
+| 文件 | 内容 |
+|---|---|
+| `TachiyomiImageDecoder.kt` | 解码器精度改经 `Waifu2x.resolvePrecision(...)` 解析:旧的 inline `takeIf { it == 0 || 1 || 3 }` 会把 W8A8(2) 请求剥成 FP16(0),在整数-only Hexagon 设备(如 SM8735/HTP v73)上 `prepare()` 的 `check(precision == W8A8 \|\| detectFp16Support != false)` 直接失败 → 整页增强静默跳过 |
+| `Waifu2x.kt` | `initializeQnnIfAvailable` 补设备级回退:请求 FP16 + 模型有 W8A8 资产 + `detectFp16Support == false` 时,以 W8A8 DLC 初始化。`resolvePrecision` 保持只迁移遗留 W8A16(4),保证缓存键跨设备稳定 |
+| `ImageEnhancementCache.kt` | QNN 分支对 W8A8-capable 模型(Anime)追加 `_w8a8v1` 页缓存版本:旧解码器把 W8A8 请求剥成 FP16 后,FP16 输出/FP16 skip 标记记在了 INT8 键下,一次性作废重生成。Photo 样式无 W8A8 资产,键形不变,缓存保留 |
+| `QnnPrecisionPolicyTest.kt` | ① 哈希用例补 `hash(0,2)==hash(0,4)`、`hash(1,0)==hash(1,4)`;② 新增旧键作废用例(本地无上游 `_ink` 后缀,legacy 键串按本地格式 `…qv22_nf1_dv1_nv3` 重写);③ 新增"冷启动 QNN 回退后仍命中已存页"用例(mockkObject 假 `fp16Supported` null→false,断言 `CacheEvent.Saved.affects` 仍命中) |
+| `QualcommHtp.kt` | 类注释去掉 spatial depth 残留(上游 299d82a5) |
+
+### 10.2 不适用项
+
+1. **spatial images 移除(299d82a5,−3343 行)bulk N/A**:本分支初次移植即剔除 spatial(§2-5),无 UI/资源/字符串可删;`spatial_qnn_runtime.{h,cpp}` 在本分支是主阅读器 QNN DLC 编译运行时(`qnn_context_bridge.cpp` 引用,`compile QNN contexts on device` f2e7c7305),并非 spatial 专属——上游的 `qnn_dlc_runtime` 改名属纯命名修饰,不追。
+2. **RealEsrganPhotoTest 日志格式化(8a519347)**:该测试文件本分支不存在。
+3. **WebDAV 队列修复(8f22198a)、分类级 WebDAV 库同步(affe3e26)、同步角标隐藏(e7594eb0)、WebDAV 章节下载(40ee5390)、OneDrive 同步(7aeb8eda)**:均非增强功能,且建立在上游自有的 `CloudSyncService`/`LibraryCloudSync`/`SettingsRemoteSyncScreen` 栈上,本分支 `data/download` 无对应基础设施。
+4. **CHANGELOG/versionCode(8efbb71b、fd89644e 及 release 提交)**:不移植(§9.2-8 惯例)。
+5. **上游 androidTest `ReaderEnhancementCompletionTest` 新增 QNN 回退用例**:androidTest 不移植(§9.2-7 惯例);其 JVM 可断言部分(缓存键与 fp16Supported 解耦)已入 10.1 的单测 ③。
+
+### 10.3 验证
+
+`spotlessApply`/`spotlessCheck`、`:app:compileDebugKotlin`、`:app:testReleaseUnitTest` 全部通过:QnnPrecisionPolicyTest 7 项(5 原有 + 2 新增,原 `image cache distinguishes` 用例补 2 断言)、ImageEnhancementCacheKeyTest 7 项、Waifu2xBackendResolutionTest 4 项、ImageEnhancerPriorityTest 7 项、ImageEnhancementCacheDiscardTest 3 项,0 失败。
+
+### 10.4 资产哈希审计(MIU v1.3.21)
+
+上游仓库内 `app/src/main/assets` 在 cffd495→7aeb8edab 之间仅删除 `spatial-depth/ATTRIBUTION.txt`(spatial 移除);DLC/模型是构建期 stage,仓库不可见,故下载官方 `app-arm64-v8a-release.apk`(SHA256 与 release 附件 `SHA256SUMS.txt` 一致)逐字节对账:
+
+- **120/120 个双方共有的模型资产字节一致**(qnn-models 16 DLC + manifest、litert-models 16、全套 ncnn 模型、anime4k glsl、libQnnModelDlc.so)→ v1.3.18–v1.3.21 上游**未更换任何模型资产**,`QNN_CONTEXT_CACHE_VERSION=22` 无需因资产递增,10.1 的 QNN 修复与现有资产兼容。
+- 双方差异均为既有有意差异:本地删除的未引用 `realesrgan-models/anime/x4`(§1.1);`w2xex-esrgan/` 仅本地捆绑(上游运行时从 HF 下载)。
+- `assets/qnn-models/manifest.json` 的 16 条 DLC SHA256 与本地文件全一致。
+- **顺带修复既有缺口**:`docs/upscale-assets-sha256sums.txt` 在 f2e7c7305(删 contexts、加 DLC)与 1.3.16(x4 图重生成)后从未更新——150 条指向已删文件、34 条未覆盖(qnn-models/litert-models/libQnnModelDlc.so)、2 条过期(`v3-general/x4.*`)。已按文档自述流程重建为 129 条,`sha256sum -c` 全通过;`third-party-upscale-assets.md` 的 scope/来源链/许可证行同步到现状,并记录本次审计。
+- **v1.3.22 补记(134428da9,2026-11-13)**:整个提交是云传输状态(WebDAV/OneDrive 上传队列、通知、备份记录);reader 侧 4 文件(ReaderViewModel/ChapterLoader/DownloadPageLoader/ReaderTransitionView)仅为 `isChapterDownloadedOnDisk`/`findChapterDir` 签名收敛的调用点适配,无增强逻辑;assets/jniLibs/cpp 零变动(资产哈希审计结论不变)。
+
+### 10.5 本地修正(审查后收敛,不改 10.1 净语义)
+
+1. **W8A8 能力判定收敛为共享入口**:上游在 `resolvePrecision`(noise=0)与页面缓存键(真实 noise)两处各自调 `supportsW8a8(qnnModelName(...))`,是两个可漂移的平行谓词。本分支收敛为 `Waifu2x.qnnSupportsW8a8(model, scale, realEsrganStyle)`,签名不含 noise——唯一 W8A8 资产(animevideov3)的命名路径本就忽略 noise,noise 敏感的 realcugan 路径名永不匹配该资产,故两处逐输入等价、缓存键不变。将来若出现按 noise 细分的 W8A8 资产,改这一处签名即可。
+2. **测试注释样式**:`QnnPrecisionPolicyTest` 的 `// KMK note:` 前缀改为普通注释(AGENTS.md 只定义 `// KMK -->` 岛语法,非标准前缀会干扰岛扫描)。
+
+两项改完后复跑 `spotlessCheck` 与 QnnPrecisionPolicyTest / ImageEnhancementCacheKeyTest / Waifu2xBackendResolutionTest,全部通过。
