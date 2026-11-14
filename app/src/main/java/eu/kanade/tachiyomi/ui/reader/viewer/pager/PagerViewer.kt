@@ -34,9 +34,9 @@ import kotlin.math.min
 @Suppress("LeakingThis")
 abstract class PagerViewer(
     val activity: ReaderActivity,
-    // KMK -->
+    // VIEL -->
     @ColorInt private val seedColor: Int? = null,
-    // KMK <--
+    // VIEL <--
 ) : Viewer {
 
     val downloadManager: DownloadManager by injectLazy()
@@ -59,9 +59,9 @@ abstract class PagerViewer(
      */
     private val adapter = PagerViewerAdapter(
         this,
-        // KMK -->
+        // VIEL -->
         seedColor = seedColor,
-        // KMK <--
+        // VIEL <--
     )
 
     /**
@@ -114,7 +114,7 @@ abstract class PagerViewer(
         pager.isVisible = false // Don't layout the pager yet
         pager.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         pager.isFocusable = false
-        // KMK -->
+        // VIEL -->
         val preferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
         // Enhancement requests retain stream factories, while holders retain decoded images.
         // A larger enhancement queue must not allocate that many full views on both sides,
@@ -122,7 +122,7 @@ abstract class PagerViewer(
         // (upstream 1.3.17 decoupled it entirely; the disabled default stays 1 here).
         pager.offscreenPageLimit =
             if (preferences.realCuganEnabled().get()) minOf(2, preferences.realCuganPreloadSize().get()) else 1
-        // KMK <--
+        // VIEL <--
         pager.id = R.id.reader_pager
         pager.adapter = adapter
         pager.addOnPageChangeListener(pagerListener)
@@ -178,9 +178,9 @@ abstract class PagerViewer(
 
     override fun destroy() {
         super.destroy()
-        // KMK -->
+        // VIEL -->
         eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.cancelAll("pager viewer destroyed")
-        // KMK <--
+        // VIEL <--
         scope.cancel()
     }
 
@@ -253,9 +253,10 @@ abstract class PagerViewer(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     internal fun isSelectedHolder(holder: PagerPageHolder): Boolean =
         adapter.joinedItems.getOrNull(pager.currentItem) == holder.item
+    // VIEL <--
 
     /**
      * Called when a [ReaderPage] is marked as active. It notifies the
@@ -264,11 +265,11 @@ abstract class PagerViewer(
     private fun onReaderPageSelected(page: ReaderPage, allowPreload: Boolean, forward: Boolean, hasExtraPage: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onReaderPageSelected: ${page.number}/${pages.size}" }
-        // KMK -->
+        // VIEL -->
         // ViewPager can select the initial spread before its holder has been added.
         // Keep preloading anchored to the selected page even when that callback is missed.
         ReaderPageImageView.currentGlobalPageIndex = page.index
-        // KMK <--
+        // VIEL <--
         activity.onPageSelected(page, hasExtraPage)
 
         // Notify holder of page change
@@ -413,12 +414,12 @@ abstract class PagerViewer(
      * Pans to the top of the page or if already on the top moves to the previous page.
      */
     protected open fun moveUp() {
-        // KMK -->
+        // VIEL -->
         val holder = (currentPage as? ReaderPage)?.let(::getPageHolder)
         if (holder != null && holder.canPanUp()) {
             holder.panUp()
         } else {
-            // KMK <--
+            // VIEL <--
             moveToPrevious()
         }
     }
@@ -427,12 +428,12 @@ abstract class PagerViewer(
      * Pans to the bottom of the page or if already on the bottom moves to the next page.
      */
     protected open fun moveDown() {
-        // KMK -->
+        // VIEL -->
         val holder = (currentPage as? ReaderPage)?.let(::getPageHolder)
         if (holder != null && holder.canPanDown()) {
             holder.panDown()
         } else {
-            // KMK <--
+            // VIEL <--
             moveToNext()
         }
     }
@@ -443,13 +444,13 @@ abstract class PagerViewer(
      */
     private fun refreshAdapter() {
         val currentItem = pager.currentItem
-        // KMK -->
+        // VIEL -->
         val preferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
         // Capped with the same rationale as the init block: a larger enhancement queue
         // must not allocate that many full offscreen views.
         pager.offscreenPageLimit =
             if (preferences.realCuganEnabled().get()) minOf(2, preferences.realCuganPreloadSize().get()) else 1
-        // KMK <--
+        // VIEL <--
         adapter.refresh()
         pager.adapter = adapter
         pager.setCurrentItem(currentItem, false)
@@ -525,12 +526,12 @@ abstract class PagerViewer(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /** Returns whether a split sibling ([InsertPage]) already exists for [page]. */
     fun hasSplitPage(page: ReaderPage): Boolean {
         return adapter.joinedItems.any { (it.first as? InsertPage)?.parent == page }
     }
-    // KMK <--
+    // VIEL <--
 
     private fun cleanupPageSplit() {
         adapter.cleanupPageSplit()

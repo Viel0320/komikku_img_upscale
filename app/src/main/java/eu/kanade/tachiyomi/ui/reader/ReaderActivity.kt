@@ -155,9 +155,9 @@ class ReaderActivity : BaseActivity() {
 
     companion object {
 
-        // KMK -->
+        // VIEL -->
         private const val UI_BUSY_COOLDOWN_MS = 1_000L
-        // KMK <--
+        // VIEL <--
 
         fun newIntent(context: Context, mangaId: Long?, chapterId: Long?/* SY --> */, page: Int? = null/* SY <-- */): Intent {
             return Intent(context, ReaderActivity::class.java).apply {
@@ -174,9 +174,9 @@ class ReaderActivity : BaseActivity() {
     private val readerPreferences = Injekt.get<ReaderPreferences>()
     private val preferences = Injekt.get<BasePreferences>()
 
-    // KMK -->
+    // VIEL -->
     val themeCoverBased = Injekt.get<UiPreferences>().themeCoverBased().get()
-    // KMK <--
+    // VIEL <--
 
     // AM (CONNECTIONS) -->
     private val connectionsPreferences: ConnectionsPreferences = Injekt.get()
@@ -199,9 +199,9 @@ class ReaderActivity : BaseActivity() {
     private var menuToggleToast: Toast? = null
     private var readingModeToast: Toast? = null
 
-    // KMK -->
+    // VIEL -->
     private var uiBusyJob: Job? = null
-    // KMK <--
+    // VIEL <--
 
     private val displayRefreshHost = DisplayRefreshHost()
 
@@ -326,7 +326,7 @@ class ReaderActivity : BaseActivity() {
     }
 
     private fun ReaderActivityBinding.setComposeOverlay(): Unit = composeOverlay.setComposeContent {
-        // KMK -->
+        // VIEL -->
         TachiyomiTheme(
             seedColor = seedColorState().takeIf { themeCoverBased },
             typography = MaterialTheme.typography.copy(
@@ -334,7 +334,7 @@ class ReaderActivity : BaseActivity() {
             ),
         ) {
             val context = LocalContext.current
-            // KMK <--
+            // VIEL <--
             val state by viewModel.state.collectAsState()
             val showPageNumber by readerPreferences.showPageNumber().collectAsState()
             val settingsScreenModel = remember {
@@ -363,7 +363,7 @@ class ReaderActivity : BaseActivity() {
                 AppBars(state = state)
             }
 
-            // KMK -->
+            // VIEL -->
             val externalStoragePermissionNotGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
                 context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
                 PackageManager.PERMISSION_DENIED
@@ -373,7 +373,7 @@ class ReaderActivity : BaseActivity() {
                     toast(KMR.strings.permission_writing_external_storage_succeed)
                 },
             )
-            // KMK <--
+            // VIEL <--
 
             val onDismissRequest = viewModel::closeDialog
             when (state.dialog) {
@@ -387,9 +387,9 @@ class ReaderActivity : BaseActivity() {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 CircularProgressIndicator(
-                                    // KMK -->
+                                    // VIEL -->
                                     color = MaterialTheme.colorScheme.primary,
-                                    // KMK <--
+                                    // VIEL <--
                                 )
                                 Text(stringResource(MR.strings.loading))
                             }
@@ -437,21 +437,21 @@ class ReaderActivity : BaseActivity() {
                         onShare = viewModel::shareImage,
                         // SY -->
                         onSave = { extra ->
-                            // KMK -->
+                            // VIEL -->
                             if (externalStoragePermissionNotGranted) {
                                 permissionRequester.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                             } else {
-                                // KMK <--
+                                // VIEL <--
                                 viewModel.saveImage(extra)
                             }
                         },
                         onShareCombined = viewModel::shareImages,
                         onSaveCombined = {
-                            // KMK -->
+                            // VIEL -->
                             if (externalStoragePermissionNotGranted) {
                                 permissionRequester.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                             } else {
-                                // KMK <--
+                                // VIEL <--
                                 viewModel.saveImages()
                             }
                         },
@@ -482,11 +482,11 @@ class ReaderActivity : BaseActivity() {
                             }.toImmutableList()
                         },
                         state.dateRelativeTime,
-                        // KMK -->
+                        // VIEL -->
                         onDownloadAction = { chapter, action ->
                             viewModel.handleDownloadAction(chapter, action)
                         },
-                        // KMK <--
+                        // VIEL <--
                     )
                 }
 
@@ -533,10 +533,10 @@ class ReaderActivity : BaseActivity() {
      */
     override fun onDestroy() {
         super.onDestroy()
-        // KMK -->
+        // VIEL -->
         uiBusyJob?.cancel()
         Waifu2x.setUiBusy(false)
-        // KMK <--
+        // VIEL <--
         viewModel.state.value.viewer?.destroy()
         config = null
         menuToggleToast?.cancel()
@@ -620,9 +620,9 @@ class ReaderActivity : BaseActivity() {
      * Dispatches a key event. If the viewer doesn't handle it, call the default implementation.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // KMK -->
+        // VIEL -->
         onUiInteracted()
-        // KMK <--
+        // VIEL <--
         val handled = viewModel.state.value.viewer?.handleKeyEvent(event) ?: false
         return handled || super.dispatchKeyEvent(event)
     }
@@ -632,19 +632,19 @@ class ReaderActivity : BaseActivity() {
      * implementation.
      */
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
-        // KMK -->
+        // VIEL -->
         onUiInteracted()
-        // KMK <--
+        // VIEL <--
         val handled = viewModel.state.value.viewer?.handleGenericMotionEvent(event) ?: false
         return handled || super.dispatchGenericMotionEvent(event)
     }
 
-    // KMK -->
+    // VIEL -->
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         onUiInteracted()
         return super.dispatchTouchEvent(ev)
     }
-    // KMK <--
+    // VIEL <--
 
     @Composable
     private fun ContentOverlay(state: ReaderViewModel.State) {
@@ -788,7 +788,7 @@ class ReaderActivity : BaseActivity() {
         )
     }
 
-    // KMK -->
+    // VIEL -->
     @Composable
     private fun seedColorState(): ComposeColor? {
         val state by viewModel.state.collectAsState()
@@ -802,7 +802,7 @@ class ReaderActivity : BaseActivity() {
                 ?.let { MangaCover.vibrantCoverColorMap[it] }
                 ?.let { ComposeColor(it) }
     }
-    // KMK <--
+    // VIEL <--
 
     // EXH -->
     private fun enableExhAutoScroll() {
@@ -934,11 +934,11 @@ class ReaderActivity : BaseActivity() {
 
     private fun setDoublePageMode(viewer: PagerViewer) {
         val currentOrientation = resources.configuration.orientation
-        // KMK --> auto double pages must not pair items while the split is enabled:
+        // VIEL --> auto double pages must not pair items while the split is enabled:
         // a paired holder renders only its first page in split mode and drops the sibling.
         viewer.config.doublePages = currentOrientation == Configuration.ORIENTATION_LANDSCAPE &&
             !viewer.config.dualPageSplit
-        // KMK <--
+        // VIEL <--
         viewModel.setDoublePages(viewer.config.doublePages)
     }
 
@@ -960,14 +960,14 @@ class ReaderActivity : BaseActivity() {
      */
     private fun setMenuVisibility(visible: Boolean) {
         viewModel.showMenus(visible)
-        // KMK -->
+        // VIEL -->
         if (visible) {
             uiBusyJob?.cancel()
             Waifu2x.setUiBusy(true)
         } else {
             onUiInteracted()
         }
-        // KMK <--
+        // VIEL <--
         if (visible) {
             windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
         } else if (readerPreferences.fullscreen().get()) {
@@ -975,7 +975,7 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     private fun onUiInteracted() {
         Waifu2x.setUiBusy(true)
         uiBusyJob?.cancel()
@@ -986,7 +986,7 @@ class ReaderActivity : BaseActivity() {
             }
         }
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Called from the presenter when a manga is ready. Used to instantiate the appropriate viewer.
@@ -996,9 +996,9 @@ class ReaderActivity : BaseActivity() {
         val newViewer = ReadingMode.toViewer(
             viewModel.getMangaReadingMode(),
             this,
-            // KMK -->
+            // VIEL -->
             seedColor = seedColorStatic()?.toArgb(),
-            // KMK <--
+            // VIEL <--
         )
 
         if (window.sharedElementEnterTransition is MaterialContainerTransform) {
@@ -1046,9 +1046,9 @@ class ReaderActivity : BaseActivity() {
 
         loadingIndicator = ReaderProgressIndicator(
             context = this,
-            // KMK -->
+            // VIEL -->
             seedColor = seedColorStatic()?.toArgb(),
-            // KMK <--
+            // VIEL <--
         )
         binding.readerContainer.addView(loadingIndicator)
 
@@ -1561,7 +1561,7 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Updates the Discord Rich Presence (RPC) status based on the current reader activity.
      *
@@ -1603,5 +1603,5 @@ class ReaderActivity : BaseActivity() {
             }
         }
     }
-    // KMK <--
+    // VIEL <--
 }

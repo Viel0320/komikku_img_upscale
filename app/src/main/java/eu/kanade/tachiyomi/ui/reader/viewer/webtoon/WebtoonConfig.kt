@@ -46,7 +46,7 @@ class WebtoonConfig(
 
     var doubleTapZoomChangedListener: ((Boolean) -> Unit)? = null
 
-    // KMK -->
+    // VIEL -->
     var pinchToZoom = true
         private set
 
@@ -56,7 +56,7 @@ class WebtoonConfig(
         private set
 
     var webtoonScaleTypeChangedListener: ((ReaderPreferences.WebtoonScaleType) -> Unit)? = null
-    // KMK <--
+    // VIEL <--
 
     // SY -->
     var usePageTransitions = false
@@ -81,12 +81,12 @@ class WebtoonConfig(
             .drop(1)
             .onEach { navigationModeChangedListener?.invoke() }
             .launchIn(scope)
-        // KMK -->
+        // VIEL -->
         readerPreferences.smallerTapZone().changes()
             .drop(1)
             .onEach { updateNavigation(navigationMode) }
             .launchIn(scope)
-        // KMK <--
+        // VIEL <--
 
         readerPreferences.dualPageSplitWebtoon()
             .register({ dualPageSplit = it }, { imagePropertyChangedListener?.invoke() })
@@ -118,7 +118,7 @@ class WebtoonConfig(
                 { doubleTapZoomChangedListener?.invoke(it) },
             )
 
-        // KMK -->
+        // VIEL -->
         readerPreferences.webtoonPinchToZoomEnabled()
             .register(
                 { pinchToZoom = it },
@@ -130,7 +130,7 @@ class WebtoonConfig(
                 { webtoonScaleType = it },
                 { webtoonScaleTypeChangedListener?.invoke(it) },
             )
-        // KMK <--
+        // VIEL <--
 
         readerPreferences.readerTheme().changes()
             .drop(1)
@@ -146,7 +146,7 @@ class WebtoonConfig(
             .register({ usePageTransitions = it }, { imagePropertyChangedListener?.invoke() })
         // SY <--
 
-        // KMK --> Image enhancement (upscale) - refresh pages when changed
+        // VIEL --> Image enhancement (upscale) - refresh pages when changed
         readerPreferences.realCuganEnabled().changes()
             .drop(1)
             .onEach {
@@ -287,12 +287,12 @@ class WebtoonConfig(
                 imagePropertyChangedListener?.invoke()
             }
             .launchIn(scope)
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     private val appContext = Injekt.get<Application>()
-    // KMK <--
+    // VIEL <--
 
     override var navigator: ViewerNavigation = defaultNavigation()
         set(value) {

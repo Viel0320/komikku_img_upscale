@@ -44,7 +44,7 @@ val Options.customDecoder: Boolean
 
 private val customDecoderKey = Extras.Key(default = false)
 
-// KMK -->
+// VIEL -->
 fun ImageRequest.Builder.enhanced(enable: Boolean) = apply {
     extras[enhancedKey] = enable
 }
@@ -89,9 +89,9 @@ val Options.pageVariant: String
     get() = getExtra(pageVariantKey)
 
 private val pageVariantKey = Extras.Key(default = "")
-// KMK <--
+// VIEL <--
 
-// KMK -->
+// VIEL -->
 /**
  * Calculate the best [Palette.Swatch] from [Palette]
  * @author Jays2Kings
@@ -130,4 +130,4 @@ fun Palette.getBestColor(): Int? {
             }
     }?.rgb
 }
-// KMK <--
+// VIEL <--

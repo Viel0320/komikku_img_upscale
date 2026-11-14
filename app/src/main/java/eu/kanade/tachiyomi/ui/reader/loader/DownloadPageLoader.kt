@@ -74,14 +74,14 @@ internal class DownloadPageLoader(
     override suspend fun loadPage(page: ReaderPage) {
         archivePageLoader?.loadPage(page)
 
-        // KMK -->
+        // VIEL -->
         if (readerPreferences.realCuganEnabled().get()) {
             ImageEnhancer.enhance(context, page)
         }
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
-    // KMK <--
+    // VIEL <--
 }

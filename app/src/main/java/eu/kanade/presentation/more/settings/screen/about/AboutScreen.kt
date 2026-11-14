@@ -74,10 +74,10 @@ class AboutScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         var isCheckingUpdates by remember { mutableStateOf(false) }
 
-        // KMK -->
+        // VIEL -->
         var isCheckingWhatsNew by remember { mutableStateOf(false) }
         var isCheckingWhatsComing by remember { mutableStateOf(false) }
-        // KMK <--
+        // VIEL <--
 
         Scaffold(
             topBar = { scrollBehavior ->
@@ -145,7 +145,7 @@ class AboutScreen : Screen() {
                     }
                 }
 
-                // KMK -->
+                // VIEL -->
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.whats_new),
@@ -222,7 +222,7 @@ class AboutScreen : Screen() {
                         )
                     }
                 }
-                // KMK <--
+                // VIEL <--
 
                 item {
                     TextPreferenceWidget(
@@ -284,9 +284,9 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            // KMK -->
+                            // VIEL -->
                             url = "https://github.com/$VIEL_REPO",
-                            // KMK <--
+                            // VIEL <--
                         )
                     }
                 }
@@ -301,14 +301,14 @@ class AboutScreen : Screen() {
         context: Context,
         onAvailableUpdate: (GetApplicationRelease.Result.NewUpdate) -> Unit,
         onFinish: () -> Unit,
-        // KMK -->
+        // VIEL -->
         peekIntoPreview: Boolean = false,
-        // KMK <--
+        // VIEL <--
     ) {
         val updateChecker = AppUpdateChecker(
-            // KMK -->
+            // VIEL -->
             peekIntoPreview = peekIntoPreview,
-            // KMK <--
+            // VIEL <--
         )
         withUIContext {
             try {
@@ -333,7 +333,7 @@ class AboutScreen : Screen() {
     }
 
     companion object {
-        // KMK -->
+        // VIEL -->
         suspend fun getReleaseNotes(
             context: Context,
             onAvailableUpdate: (GetApplicationRelease.Result.NewUpdate) -> Unit,
@@ -357,7 +357,7 @@ class AboutScreen : Screen() {
                 }
             }
         }
-        // KMK <--
+        // VIEL <--
 
         fun getVersionName(withBuildDate: Boolean): String {
             return when {

@@ -28,40 +28,40 @@ import kotlin.concurrent.write
 object ImageEnhancementCache {
     private const val CACHE_DIR_NAME = "realcugan_cache"
 
-    // KMK -->
+    // VIEL -->
     // Input decoding now preserves source resolution before enhancement.
     private const val ENHANCEMENT_INPUT_DECODE_REVISION = 1
     private const val REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION = 3
     private const val MONOCHROME_INPUT_NORMALIZATION_REVISION = 3
     private const val REAL_ESRGAN_PHOTO_NCNN_REVISION = 2
-    // KMK --> Bumped once so QNN Anime pages saved before the decoder kept the W8A8
+    // VIEL --> Bumped once so QNN Anime pages saved before the decoder kept the W8A8
     // request are regenerated (upstream 1.3.18, af1633f3).
     private const val QNN_W8A8_PAGE_CACHE_REVISION = 1
-    // KMK <--
-    // KMK <--
+    // VIEL <--
+    // VIEL <--
     private const val MAX_CACHE_SIZE = 3L * 1024 * 1024 * 1024 // 3GB
 
-    // KMK -->
+    // VIEL -->
     // libwebp stores width/height in 14 bits, so Bitmap.compress(WEBP_*) fails
     // (returns false, no exception) for any side above 16383px. The enhanced
     // output must be clamped to this before it reaches writeToCache, or the
     // save silently produces no cache file and no event.
     const val WEBP_MAX_DIMENSION = 16383
-    // KMK <--
+    // VIEL <--
     private var cacheDir: File? = null
 
-    // KMK -->
+    // VIEL -->
     // A model change clears this directory while completed pages can still be
     // waiting in the background writer. Saving holds a shared lock for its
     // lifetime, so clear() cannot remove a file below an active writer. Cache
     // lookups also use the shared lock and must never wait for WebP compression.
     private val cacheLock = ReentrantReadWriteLock()
-    // KMK <--
+    // VIEL <--
     private var lastTrimTime = 0L
     private val cacheGeneration = AtomicInteger(0)
     private val pendingSaveKeys = ConcurrentHashMap<CacheKey, SaveRequest>()
 
-    // KMK -->
+    // VIEL -->
     // Encoding a 2x enhanced page (WebP q90, tens of MB of ARGB_8888) takes
     // hundreds of milliseconds. It used to run inline on the single-threaded
     // enhance dispatcher, which serialized it with native inference and cut
@@ -86,7 +86,7 @@ object ImageEnhancementCache {
                         }
                     }
                 } catch (e: OutOfMemoryError) {
-                    // KMK --> Encoding an enhanced page is optional; record the page as
+                    // VIEL --> Encoding an enhanced page is optional; record the page as
                     // skipped so polling stops re-requesting it, and keep draining the
                     // channel so one failed encode cannot stall the writer (upstream 1.3.17).
                     android.util.Log.e(
@@ -101,7 +101,7 @@ object ImageEnhancementCache {
                         request.configHash,
                         request.pageVariant,
                     )
-                    // KMK <--
+                    // VIEL <--
                 } catch (t: Throwable) {
                     android.util.Log.e(
                         "ImageEnhancementCache",
@@ -114,7 +114,7 @@ object ImageEnhancementCache {
             }
         }
     }
-    // KMK <--
+    // VIEL <--
 
     private data class SaveRequest(
         val mangaId: Long,
@@ -127,7 +127,7 @@ object ImageEnhancementCache {
         val cacheKey: CacheKey,
     )
 
-    // KMK -->
+    // VIEL -->
     data class CacheKey(
         val mangaId: Long,
         val chapterId: Long,
@@ -170,7 +170,7 @@ object ImageEnhancementCache {
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val events = _events.asSharedFlow()
-    // KMK <--
+    // VIEL <--
 
     fun init(context: Context) {
         cacheLock.read {
@@ -214,7 +214,7 @@ object ImageEnhancementCache {
         return if (file.isFile) file else null
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Read a stable snapshot before clear()/model changes can delete the backing file.
      * A small decode rejects corrupt old entries without allocating a full enhanced bitmap.
@@ -282,7 +282,7 @@ object ImageEnhancementCache {
             android.util.Log.w("ImageEnhancementCache", "Discarded invalid enhanced image: ${file.name}")
         }
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Check if a file is already cached (helper for UI checks)
@@ -295,7 +295,7 @@ object ImageEnhancementCache {
      * Remove a cached enhanced image and its temporary file for the same page/config.
      */
     fun removeCachedImage(mangaId: Long, chapterId: Long, pageIndex: Int, configHash: String, pageVariant: String = ""): Boolean {
-        // KMK -->
+        // VIEL -->
         return cacheLock.write {
             try {
                 pendingSaveKeys.remove(cacheKey(mangaId, chapterId, pageIndex, configHash, pageVariant))
@@ -313,7 +313,7 @@ object ImageEnhancementCache {
                 false
             }
         }
-        // KMK <--
+        // VIEL <--
     }
 
     fun removeSkipMarker(mangaId: Long, chapterId: Long, pageIndex: Int, configHash: String, pageVariant: String = ""): Boolean {
@@ -330,7 +330,7 @@ object ImageEnhancementCache {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Hand [bitmap] to the asynchronous cache writer.
      *
@@ -373,7 +373,7 @@ object ImageEnhancementCache {
         saveQueue.send(request)
         return true
     }
-    // KMK <--
+    // VIEL <--
 
     fun isSavePending(mangaId: Long, chapterId: Long, pageIndex: Int, pageVariant: String = "", configHash: String? = null): Boolean {
         return if (configHash != null) {
@@ -424,14 +424,14 @@ object ImageEnhancementCache {
                     success
                 }
 
-                // KMK -->
+                // VIEL -->
                 // A zero-byte or failed encode must never be renamed over the page's
                 // only valid cache entry.
                 if (!compressed || tempFile.length() == 0L || request.generation != cacheGeneration.get()) {
                     tempFile.delete()
                     return@read null
                 }
-                // KMK <--
+                // VIEL <--
 
                 if (tempFile.renameTo(file)) {
                     file
@@ -543,7 +543,7 @@ object ImageEnhancementCache {
         _events.tryEmit(CacheEvent.Cleared)
     }
 
-    // KMK -->
+    // VIEL -->
     private fun cacheKey(
         mangaId: Long,
         chapterId: Long,
@@ -551,7 +551,7 @@ object ImageEnhancementCache {
         configHash: String,
         pageVariant: String,
     ) = CacheKey(mangaId, chapterId, pageIndex, configHash, pageVariant)
-    // KMK <--
+    // VIEL <--
 
     private fun getFilename(pageIndex: Int, configHash: String, pageVariant: String = ""): String {
         return buildString {
@@ -600,14 +600,14 @@ object ImageEnhancementCache {
     ): String {
         val effectiveScale = getEffectiveScale(model, scale, realEsrganStyle)
         val resolvedBackend = Waifu2x.resolveProcessingBackend(processingBackend, model, effectiveScale)
-        // KMK -->
+        // VIEL -->
         // The style gates INT8 (Anime only), so it must take part in precision
         // resolution and therefore in the cache key.
         val resolvedPrecision =
             Waifu2x.resolvePrecision(precision, resolvedBackend, model, effectiveScale, realEsrganStyle)
-        // KMK <--
+        // VIEL <--
         val modelRevision = buildString {
-            // KMK -->
+            // VIEL -->
             // The Real-ESRGAN Photo NCNN graph was regenerated with corrected resize
             // parameters (upstream 1.3.16); pages enhanced with the old graph are stale.
             if (
@@ -617,35 +617,35 @@ object ImageEnhancementCache {
             ) {
                 append("_rp$REAL_ESRGAN_PHOTO_NCNN_REVISION")
             }
-            // KMK <--
+            // VIEL <--
             if (resolvedBackend == Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU) {
                 append("_qv${Waifu2x.QNN_CONTEXT_CACHE_VERSION}_nf1")
-                // KMK --> Only W8A8-capable models (Anime on QNN) change their key: pages
+                // VIEL --> Only W8A8-capable models (Anime on QNN) change their key: pages
                 // saved before the decoder preserved the W8A8 request can hold FP16 output
                 // or FP16 skip markers under INT8 keys, so both legacy variants must be
                 // discarded (upstream 1.3.18, af1633f3).
                 if (Waifu2x.qnnSupportsW8a8(model, effectiveScale, realEsrganStyle)) {
                     append("_w8a8v$QNN_W8A8_PAGE_CACHE_REVISION")
                 }
-                // KMK <--
+                // VIEL <--
             }
             if (resolvedBackend == Waifu2x.PROCESSING_BACKEND_MEDIATEK_NPU) {
                 append("_mtv${eu.kanade.tachiyomi.util.mediatek.MediaTekNpu.CACHE_VERSION}")
             }
 
-            // KMK -->
+            // VIEL -->
             // The 75% shrink-and-restore texture guard covers every Real-CUGAN
             // Pro page and SE denoise3 pages, and monochrome pages keep their
             // source pixels now; all three change the output for the same file.
             if (model == 1 || (model == 0 && noise == 3)) {
                 append("_tv$REAL_CUGAN_TEXTURE_OCCUPANCY_REVISION")
             }
-            // KMK <--
+            // VIEL <--
         }
-        // KMK -->
+        // VIEL -->
         return "${noise}x${effectiveScale}_m${model}_rs${realEsrganStyle}_w${maxWidth}_h${maxHeight}_sw${skipMaxWidth}_sh${skipMaxHeight}_t${tileSize}_p${resolvedPrecision}_fa${if (fp16Arithmetic) 1 else 0}_b${resolvedBackend}${modelRevision}_dv$ENHANCEMENT_INPUT_DECODE_REVISION" +
             "_nv$MONOCHROME_INPUT_NORMALIZATION_REVISION"
-        // KMK <--
+        // VIEL <--
     }
 
     fun getEffectiveScale(model: Int, scale: Int, realEsrganStyle: Int = Waifu2x.REAL_ESRGAN_STYLE_ANIME): Int {

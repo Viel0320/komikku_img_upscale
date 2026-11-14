@@ -71,7 +71,7 @@ For upstream commit `H` (already fetched locally):
      naming what is missing.
 3. Otherwise, search `master` for the change itself:
    - `git grep -n -F '<distinctive added line>' master -- <path>` (Komikku keeps most upstream paths;
-     changes may be wrapped in `// KMK` / `// SY` markers or be in a renamed file).
+     changes may be wrapped in `// VIEL` / `// KMK` / `// SY` markers or be in a renamed file).
    - `git log master --oneline -S'<distinctive snippet>' --since=<upstream date - 6 months>`.
    - For removals, check that the removed code is gone from `master`.
 4. Decide:

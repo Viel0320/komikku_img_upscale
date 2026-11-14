@@ -56,18 +56,18 @@ class ReaderPreferences(
 
     fun webtoonDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_webtoon", true)
 
-    // KMK -->
+    // VIEL -->
     fun pagedDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_paged", true)
 
     fun webtoonPinchToZoomEnabled() = preferenceStore.getBoolean("pref_enable_pinch_to_zoom_webtoon", true)
-    // KMK <--
+    // VIEL <--
 
     fun imageScaleType() = preferenceStore.getInt("pref_image_scale_type_key", 1)
 
-    // KMK -->
+    // VIEL -->
     fun webtoonScaleType() = preferenceStore.getEnum("pref_webtoon_scale_type_key", WebtoonScaleType.FIT)
     fun longStripGapSmartScale() = preferenceStore.getBoolean("pref_webtoon_smart_scale_long_strip_gap", false)
-    // KMK <--
+    // VIEL <--
 
     fun zoomStart() = preferenceStore.getInt("pref_zoom_start_key", 1)
 
@@ -81,9 +81,9 @@ class ReaderPreferences(
 
     fun landscapeZoom() = preferenceStore.getBoolean("landscape_zoom", true)
 
-    // KMK -->
+    // VIEL -->
     fun landscapeZoomType() = preferenceStore.getEnum("landscape_zoom_type", LandscapeZoomScaleType.FIT)
-    // KMK <--
+    // VIEL <--
 
     fun cropBordersWebtoon() = preferenceStore.getBoolean("crop_borders_webtoon", false)
 
@@ -101,9 +101,9 @@ class ReaderPreferences(
 
     fun webtoonDisableZoomOut() = preferenceStore.getBoolean("webtoon_disable_zoom_out", false)
 
-    // KMK -->
+    // VIEL -->
     fun pagedDisableZoomIn() = preferenceStore.getBoolean("paged_disable_zoom_in", false)
-    // KMK <--
+    // VIEL <--
 
     // endregion
 
@@ -144,7 +144,7 @@ class ReaderPreferences(
 
     // endregion
 
-    // KMK -->
+    // VIEL -->
     // region Image enhancement (upscale)
 
     fun realCuganEnabled() = preferenceStore.getBoolean("pref_realcugan_enabled", false)
@@ -165,12 +165,12 @@ class ReaderPreferences(
 
     fun realCuganPrecision() = preferenceStore.getInt("pref_realcugan_precision", 0) // 0: FP16, 1: FP32, 3: BF16 (legacy 2 resolves to FP16)
 
-    // KMK -->
+    // VIEL -->
     fun realCuganProcessingBackend() = preferenceStore.getInt(
         "pref_realcugan_processing_backend",
         Waifu2x.defaultProcessingBackend(),
     ) // 0: Vulkan, 1: Qualcomm, 2: MediaTek
-    // KMK <--
+    // VIEL <--
 
     fun realCuganFp16Arithmetic() = preferenceStore.getBoolean("pref_realcugan_fp16_arithmetic", false)
 
@@ -185,7 +185,7 @@ class ReaderPreferences(
     fun realCuganShowStatus() = preferenceStore.getBoolean("pref_realcugan_show_status", false)
 
     // endregion
-    // KMK <--
+    // VIEL <--
 
     // region Controls
 
@@ -207,9 +207,9 @@ class ReaderPreferences(
 
     fun showNavigationOverlayOnStart() = preferenceStore.getBoolean("reader_navigation_overlay_on_start", false)
 
-    // KMK -->
+    // VIEL -->
     fun smallerTapZone() = preferenceStore.getBoolean("reader_navigation_smaller_tap_zone", false)
-    // KMK <--
+    // VIEL <--
 
     // endregion
 
@@ -278,7 +278,7 @@ class ReaderPreferences(
         LOWEST(47),
     }
 
-    // KMK -->
+    // VIEL -->
     enum class LandscapeZoomScaleType(
         val titleRes: StringResource,
     ) {
@@ -296,7 +296,7 @@ class ReaderPreferences(
         R16_9(KMR.strings.scale_type_16_9, 9f / 16f),
         R20_9(KMR.strings.scale_type_20_9, 9f / 20f),
     }
-    // KMK <--
+    // VIEL <--
 
     object ArchiveReaderMode {
         const val LOAD_FROM_FILE = 0
@@ -335,12 +335,12 @@ class ReaderPreferences(
             MR.strings.zoom_start_center,
         )
 
-        // KMK -->
+        // VIEL -->
         val zoomWideImagesAllowedList = listOf(
             SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE,
             SubsamplingScaleImageView.SCALE_TYPE_ORIGINAL_SIZE,
         )
-        // KMK <--
+        // VIEL <--
 
         val ColorFilterMode = buildList {
             addAll(

@@ -105,15 +105,15 @@ open class ReaderPageImageView @JvmOverloads constructor(
         Injekt.get<BasePreferences>().alwaysDecodeLongStripWithSSIV().get()
     }
 
-    // KMK --> recreated on every attach so its collectors never outlive the view
+    // VIEL --> recreated on every attach so its collectors never outlive the view
     private var viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var preferenceJobs: List<Job> = emptyList()
-    // KMK <--
+    // VIEL <--
 
     private var isSettingProcessedImage = false // Flag to prevent recursive processing
 
-    // KMK -->
+    // VIEL -->
     private val preferences: ReaderPreferences by injectLazy()
 
     private val realCuganEnabled: Boolean
@@ -148,7 +148,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     private val tileSize: Int
         get() = preferences.realCuganTileSize().get().coerceAtLeast(32)
-    // KMK <--
+    // VIEL <--
 
     // Performance throttling is applied by [ImageEnhancer.initializeRuntime]; this view only
     // owns presentation state.
@@ -156,7 +156,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     private var currentLoadedUri: String? = null
     private val statusUpdateVersion = AtomicInteger()
 
-    // KMK -->
+    // VIEL -->
     // Incremented on every new image binding (and on recycle/detach); async enhanced-cache
     // swaps compare their captured revision before touching the view.
     private var imageRevision = 0
@@ -170,9 +170,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
     // the renderer (upstream 1.3.16).
     private var hasDisplayedImage = false
     private var pendingInitialEnhancement: (() -> Unit)? = null
-    // KMK <--
+    // VIEL <--
 
-    // KMK -->
+    // VIEL -->
     var enhancedImageSourceFactory: ((java.io.File) -> BufferedSource?)? = null
 
     /**
@@ -192,11 +192,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var suppressDefaultStatus = false
     /** Whether this view participates in image enhancement (merged spreads included). */
     var enhancementDisplayEnabled: Boolean = true
-    // KMK <--
+    // VIEL <--
 
     private var config: Config? = null
 
-    // KMK -->
+    // VIEL -->
     private var processingJob: Job? = null
     private var processingKey: EnhancementPollKey? = null
     private var enhancedBitmap: Bitmap? = null
@@ -214,7 +214,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var processedTransitionStartFraction: Float = 0f
     var processedTransitionEndFraction: Float = 1f
     var controlsCurrentPageSelection: Boolean = true
-    // KMK <--
+    // VIEL <--
 
     var onImageLoaded: (() -> Unit)? = null
     var onImageLoadError: ((Throwable?) -> Unit)? = null
@@ -227,14 +227,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
     var pageBackground: Drawable? = null
 
     init {
-        // KMK -->
+        // VIEL -->
         // Preference collectors are registered in onAttachedToWindow and cancelled in
         // onDetachedFromWindow so they cannot leak for detached/recycled views, and cost
         // nothing while the enhancement feature is disabled.
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     private fun startPreferenceCollectors() {
         preferenceJobs = listOf(
             viewScope.launchIO {
@@ -255,16 +255,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        // KMK --> reuse the initial scope on first attach; only rebuild it once the previous
+        // VIEL --> reuse the initial scope on first attach; only rebuild it once the previous
         // one was cancelled, so the declared instance can never be orphaned.
         if (viewScope.coroutineContext[Job]?.isActive != true) {
             viewScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         }
+        // VIEL <--
         startPreferenceCollectors()
     }
-    // KMK <--
+    // VIEL <--
 
-    // KMK -->
+    // VIEL -->
     private var statusViewCreated = false
     private val statusView: TextView by lazy {
         statusViewCreated = true
@@ -308,7 +309,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         if (Looper.myLooper() == Looper.getMainLooper()) applyStatus.run() else post(applyStatus)
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Configured backend name used as the status label once a page is processed and while
      * the enhanced result is pending, e.g. "QNN". Mirrors the value feeding the cache
@@ -316,27 +317,27 @@ open class ReaderPageImageView @JvmOverloads constructor(
      */
     private fun enhancementBackendName(): String {
         if (!realCuganEnabled) return ""
-        // KMK -->
+        // VIEL -->
         return when (preferences.realCuganProcessingBackend().get()) {
             Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU -> "QNN"
             Waifu2x.PROCESSING_BACKEND_MEDIATEK_NPU -> "LiteRT"
             else -> "Vulkan"
         }
-        // KMK <--
+        // VIEL <--
     }
-    // KMK <--
+    // VIEL <--
 
-    // KMK <--
+    // VIEL <--
 
     @CallSuper
     open fun onImageLoaded() {
-        // KMK -->
+        // VIEL -->
         hasDisplayedImage = true
-        // KMK <--
+        // VIEL <--
         onImageLoaded?.invoke()
         background = pageBackground
 
-        // KMK -->
+        // VIEL -->
         // Keep the processed preview fully covering the page until the replacement image is ready,
         // then switch instantly to avoid exposing SSIV's blank loading state.
         if (isSettingProcessedImage) {
@@ -349,14 +350,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
             enhancedBitmap = null
             isSettingProcessedImage = false
         }
-        // KMK <--
+        // VIEL <--
 
-        // KMK -->
+        // VIEL -->
         notifyVisibleImageDisplayed()
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * onReady runs before drawing. Leave a complete frame for the original on screen
      * before GPU/NPU work or a cached replacement can occupy the renderer, then run
@@ -379,17 +380,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
             }
         }
     }
-    // KMK <--
+    // VIEL <--
 
     @CallSuper
     open fun onImageLoadError(error: Throwable?) {
-        // KMK -->
+        // VIEL -->
         // A failed enhanced-cache load must not hide a readable original page.
         if (recoverEnhancedCacheLoad(error)) return
-        // KMK <--
+        // VIEL <--
         onImageLoadError?.invoke(error)
 
-        // KMK -->
+        // VIEL -->
         // Hide overlay and recycle temporary bitmap if enhanced image load failed
         if (isSettingProcessedImage) {
             pageView?.alpha = 1f
@@ -399,10 +400,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
             enhancedBitmap = null
             isSettingProcessedImage = false
         }
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     /** Cache failures must not hide a readable original page. Retry enhancement once per binding. */
     protected fun recoverEnhancedCacheLoad(error: Throwable?): Boolean {
         val file = currentCachedFile ?: return false
@@ -444,13 +445,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
         return true
     }
-    // KMK <--
+    // VIEL <--
 
     @CallSuper
     open fun onScaleChanged(newScale: Float) {
         onScaleChanged?.invoke(newScale)
 
-        // KMK -->
+        // VIEL -->
         if (processedSwapAnimator?.isRunning == true) {
             completeProcessedSwapTransition(notifyLoaded = true)
         }
@@ -465,10 +466,10 @@ open class ReaderPageImageView @JvmOverloads constructor(
             isSettingProcessedImage = false
             pageView?.alpha = 1f
         }
-        // KMK <--
+        // VIEL <--
     }
 
-    // KMK -->
+    // VIEL -->
     private fun clearProcessedSwapView() {
         processedSwapAnimator?.run {
             removeAllUpdateListeners()
@@ -637,7 +638,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         swapView.setImageBlock()
     }
 
-    // KMK <--
+    // VIEL <--
 
     @CallSuper
     open fun onViewClicked() {
@@ -645,7 +646,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     open fun onPageSelected(forward: Boolean) {
-        // KMK --> Enhancement cache status / pruning
+        // VIEL --> Enhancement cache status / pruning
         val mId = readerPage?.chapter?.chapter?.manga_id ?: mangaId
         val cId = readerPage?.chapter?.chapter?.id ?: chapterId
         val pIdx = readerPage?.index ?: pageIndex
@@ -663,11 +664,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
         }
 
-        // KMK -->
+        // VIEL -->
         // The selection callback can run before the holder's first frame is displayed;
         // defer cache/enhancement work until then, when pendingInitialEnhancement runs.
         if (hasDisplayedImage) notifyVisibleImageDisplayed()
-        // KMK <--
+        // VIEL <--
 
         if (hasDisplayedImage && pIdx >= 0 && mId != -1L && cId != -1L && realCuganEnabled && enhancementDisplayEnabled) {
             ImageEnhancementCache.init(context)
@@ -675,7 +676,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             val pageVariant = enhancementVariant()
             val secondaryFile = secondaryCachedFile(mId, configHash)
 
-            // KMK --> the sibling half is visible too, so a skip marker recorded for it gets the
+            // VIEL --> the sibling half is visible too, so a skip marker recorded for it gets the
             // same one-shot retry as the primary page: clear it on selection only, so a half that
             // keeps failing cannot loop through the poll heal path.
             if (secondary != null && isSecondarySkipped(mId, configHash)) {
@@ -683,7 +684,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     ImageEnhancementCache.removeSkipMarker(mId, secondaryChapterId, secondary.index, configHash, variantOf(secondary))
                 }
             }
-            // KMK <--
+            // VIEL <--
             if (secondary != null && secondaryFile == null) {
                 // Waiting for the sibling half - keep both queued and let polling swap once ready.
                 updateStatus(context.stringResource(KMR.strings.reader_status_processing))
@@ -736,7 +737,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         updateStatus(enhancementBackendName())
                     }
                 } else if (ImageEnhancementCache.isSkipped(mId, cId, pIdx, configHash, pageVariant)) {
-                    // KMK --> the page is now the one the user navigated to, so give it another
+                    // VIEL --> the page is now the one the user navigated to, so give it another
                     // chance instead of leaving it raw for the rest of the session. Mirrors
                     // upstream's ensureVisibleExtraPageEnhancement; the marker is only cleared
                     // on selection, never on a plain rebind, so a failing page cannot loop.
@@ -746,7 +747,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     enqueueEnhancement(mId, cId, pIdx, highPriority = true)
                     enqueueSecondaryIfNeeded(mId, configHash, highPriority = true)
                     startEnhancementPolling(mId, cId, pIdx, configHash)
-                    // KMK <--
+                    // VIEL <--
                 } else {
                     // Not in cache, not skipped - ensure it's being processed with high priority
                     updateStatus(context.stringResource(KMR.strings.reader_status_processing))
@@ -766,7 +767,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             ImageEnhancer.cancelRequestsLessThan(context.applicationContext, mId, cId, pIdx)
             ImageEnhancer.cancelRequestsGreaterThan(context.applicationContext, mId, cId, pIdx + preloadSize)
         }
-        // KMK <--
+        // VIEL <--
 
         with(pageView as? SubsamplingScaleImageView) {
             if (this == null) return
@@ -805,9 +806,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     ZoomStartPosition.CENTER -> center
                 }
 
-                val targetScale = /* KMK --> */ when (config.landscapeZoomScaleType) {
+                val targetScale = /* VIEL --> */ when (config.landscapeZoomScaleType) {
                     LandscapeZoomScaleType.DOUBLE -> scale * 2
-                    // KMK <--
+                    // VIEL <--
                     else -> height.toFloat() / sHeight.toFloat()
                 }
                 (animateScaleAndCenter(targetScale, point) ?: return@postDelayed)
@@ -820,7 +821,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun setImage(drawable: Drawable, config: Config) {
-        // KMK -->
+        // VIEL -->
         imageRevision++
         hasDisplayedImage = false
         pendingInitialEnhancement = null
@@ -829,7 +830,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         currentCachedFile = null
         enhancedRecoveryCount = 0
         originalStreamFn = null
-        // KMK <--
+        // VIEL <--
         this.config = config
         if (drawable is Animatable) {
             prepareAnimatedImageView()
@@ -841,7 +842,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     fun setImage(source: BufferedSource, isAnimated: Boolean, config: Config, streamFn: (() -> java.io.InputStream)? = null) {
-        // KMK -->
+        // VIEL -->
         imageRevision++
         hasDisplayedImage = false
         pendingInitialEnhancement = null
@@ -850,7 +851,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         currentCachedFile = null
         enhancedRecoveryCount = 0
         originalStreamFn = streamFn
-        // KMK <--
+        // VIEL <--
         this.config = config
         if (isAnimated) {
             prepareAnimatedImageView()
@@ -861,7 +862,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     fun recycle() {
         imageRevision++
         hasDisplayedImage = false
@@ -888,7 +889,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
             invalidate()
         }
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Check if the image can be panned to the left
@@ -900,7 +901,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
      */
     fun canPanRight(): Boolean = canPan { it.right }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Check if the image can be panned up
      */
@@ -910,7 +911,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
      * Check if the image can be panned down
      */
     fun canPanDown(): Boolean = canPan { it.bottom }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Check whether the image can be panned.
@@ -940,7 +941,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         pan { center, view -> center.also { it.x += view.width / view.scale } }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Pans the image down by a screen's height worth.
      */
@@ -954,7 +955,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     fun panUp() {
         pan { center, view -> center.also { it.y -= view.height / view.scale } }
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Pans the image.
@@ -972,7 +973,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     protected fun setProcessedSource(
         file: java.io.File,
         transformedSource: BufferedSource,
@@ -988,14 +989,14 @@ open class ReaderPageImageView @JvmOverloads constructor(
             return
         }
         val uriString = file.toURI().toString()
-        // KMK --> Re-showing the already displayed file must not reset the active image
+        // VIEL --> Re-showing the already displayed file must not reset the active image
         // (a spread refresh re-runs this with the same output); callers that genuinely
         // need the swap re-run pass forceRefresh (upstream 1.3.17).
         if (!forceRefresh && currentLoadedUri == uriString) {
             transformedSource.close()
             return
         }
-        // KMK <--
+        // VIEL <--
         currentCachedFile = file
         updateStatus(enhancementBackendName())
 
@@ -1228,13 +1229,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
         requeueEnhancement(mId, cId, pIdx, triggerData, streamFn, forceCurrentPage)
     }
-    // KMK <--
+    // VIEL <--
 
     private fun prepareNonAnimatedImageView() {
         if (pageView is SubsamplingScaleImageView) return
-        // KMK -->
+        // VIEL -->
         clearProcessedSwapView()
-        // KMK <--
+        // VIEL <--
         removeView(pageView)
 
         pageView = createSubsamplingPageView()
@@ -1242,9 +1243,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
         bringEnhancementStatusToFront()
     }
 
-    // KMK -->
+    // VIEL -->
     private fun createSubsamplingPageView(): SubsamplingScaleImageView {
-        // KMK <--
+        // VIEL <--
         return if (isWebtoon) {
             WebtoonSubsamplingImageView(context)
         } else {
@@ -1267,21 +1268,21 @@ open class ReaderPageImageView @JvmOverloads constructor(
             )
             setOnClickListener { this@ReaderPageImageView.onViewClicked() }
         }
-        // KMK -->
+        // VIEL -->
     }
-    // KMK <--
+    // VIEL <--
 
     private fun SubsamplingScaleImageView.setupZoom(config: Config?) {
         // 5x zoom
         maxScale = scale * MAX_ZOOM_SCALE
-        // KMK -->
+        // VIEL -->
         if (config?.disableZoomIn == true) {
             isZoomEnabled = false
         } else {
             if (config?.doubleTapZoom == false) {
                 setDoubleTapZoomScale(scale)
             } else {
-                // KMK <--
+                // VIEL <--
                 setDoubleTapZoomScale(scale * 2)
             }
         }
@@ -1300,7 +1301,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         streamFn: (() -> java.io.InputStream)? = null,
         allowEnhancement: Boolean = true,
     ) = (pageView as? SubsamplingScaleImageView)?.apply {
-        // KMK -->
+        // VIEL -->
         // Defer enhancement until the first original frame is displayed
         // (see notifyVisibleImageDisplayed); one callback covers every decode path below.
         pendingInitialEnhancement = if (allowEnhancement && realCuganEnabled && pageIndex >= 0 && mangaId != -1L) {
@@ -1313,7 +1314,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         } else {
             null
         }
-        // KMK <--
+        // VIEL <--
         setDoubleTapZoomDuration(config.zoomDuration.getSystemScaledDuration())
         setMinimumScaleType(config.minimumScaleType)
         setMinimumDpi(1) // Just so that very small image will be fit for initial load
@@ -1375,7 +1376,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     private fun SubsamplingScaleImageView.processImageHelper(
         streamFn: (() -> java.io.InputStream)? = null,
         originalData: Any? = null,
@@ -1414,13 +1415,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
             val cachedFile = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
             if (cachedFile != null) {
                 logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx found in cache on first check: ${cachedFile.absolutePath}" }
-                // KMK --> The observer also handles an already-cached result. Never decode or
+                // VIEL --> The observer also handles an already-cached result. Never decode or
                 // transform a cached page inside the UI frame callback, or reset the active
                 // image while it is being drawn (upstream 1.3.17). Invalid entries go through
                 // the poll's heal path; merged spreads were already delegated to the poll.
                 startEnhancementPolling(mId, cId, pIdx, configHash, originalData, streamFn)
                 return
-                // KMK <--
+                // VIEL <--
             }
         }
 
@@ -1495,12 +1496,12 @@ open class ReaderPageImageView @JvmOverloads constructor(
         processingJob?.cancel()
         processingKey = key
         processingJob = viewScope.launchIO {
-            // KMK --> the variant captured in the key identifies this job; recomputing it
+            // VIEL --> the variant captured in the key identifies this job; recomputing it
             // live could diverge from the key the dedupe check compares against.
             val pageVariant = key.pageVariant
-            // KMK <--
+            // VIEL <--
             val secondary = secondaryPage
-            // KMK --> a merged spread waits on both halves; affects() only matches the
+            // VIEL --> a merged spread waits on both halves; affects() only matches the
             // primary key, so the sibling half's Saved event could never wake this poll
             // and the swap waited on the fallback pass below. Watch the sibling key too.
             // Declared above the try so its finally can stop the producer.
@@ -1510,16 +1511,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
             val cacheEvents = ImageEnhancementCache.events
                 .filter { it.affects(mId, cId, pIdx, configHash, pageVariant) || it.key == secondaryKey }
                 .produceIn(this)
-            // KMK <--
+            // VIEL <--
             try {
                 var wasEnhancing = false
-                // KMK --> bounded so a page that cannot be enhanced (for example an NPU model
+                // VIEL --> bounded so a page that cannot be enhanced (for example an NPU model
                 // that failed to compile) is not decoded again on every poll pass.
                 var healAttempts = 0
                 // The degraded-raw state persists while the page stays outside the heal
                 // window, so it is logged once per poll instead of every 500 ms pass.
                 var degradedLogged = false
-                // KMK <--
+                // VIEL <--
                 var shouldCheckCache = true
                 // The queue may legitimately take longer than a minute for a tall webtoon page
                 // or a spread waiting on its sibling half. Keep observing while this frame is
@@ -1539,7 +1540,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         val file = ImageEnhancementCache.getCachedImage(mId, cId, pIdx, configHash, pageVariant)
                         if (file != null && (secondary == null || secondaryFile != null)) {
                             logcat(LogPriority.DEBUG) { "ReaderPageImageView: Page $pIdx/$pageVariant found in cache after cache event: ${file.absolutePath}" }
-                            // KMK --> Completion notifications can be lost at a timeout boundary:
+                            // VIEL --> Completion notifications can be lost at a timeout boundary:
                             // when the cached file is already on screen, only the status label
                             // needs recovering; skip the decode entirely (upstream 1.3.17).
                             val alreadyDisplayed = withUIContext {
@@ -1551,18 +1552,18 @@ open class ReaderPageImageView @JvmOverloads constructor(
                                 }
                             }
                             if (alreadyDisplayed) return@launchIO
-                            // KMK <--
+                            // VIEL <--
                             val transformedSource = buildEnhancedDisplaySource(file, secondaryFile)
                             if (transformedSource != null) {
                                 withUIContext {
-                                    // KMK --> a stale revision must not swap the image of a
+                                    // VIEL --> a stale revision must not swap the image of a
                                     // recycled or rebound view (upstream 1.3.17).
                                     if (key.revision == imageRevision) {
                                         setProcessedSource(file, transformedSource = transformedSource)
                                     } else {
                                         transformedSource.close()
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                 }
                                 return@launchIO
                             }
@@ -1576,13 +1577,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
                             if (source != null) {
                                 withUIContext {
-                                    // KMK --> same revision guard as above.
+                                    // VIEL --> same revision guard as above.
                                     if (key.revision == imageRevision) {
                                         setProcessedSource(file, transformedSource = source)
                                     } else {
                                         source.close()
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                 }
                                 return@launchIO
                             } else {
@@ -1602,7 +1603,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                     // Check progress status
                     val pid = Waifu2x.getProgressId()
                     val requested = ImageEnhancer.hasRequest(mId, cId, pIdx, pageVariant) || isSecondaryRequested(mId)
-                    // KMK --> Phase-aware label for the actively processed page: PREPARING while
+                    // VIEL --> Phase-aware label for the actively processed page: PREPARING while
                     // the model/runtime is being readied, ENHANCING with live progress, SAVING
                     // while the result is encoded into the cache; null when the attempt was just
                     // cancelled so the generic labels take over (upstream 1.3.17).
@@ -1611,24 +1612,24 @@ open class ReaderPageImageView @JvmOverloads constructor(
                         wasEnhancing = true
                         updateStatus(phaseLabel)
                     } else if (pid == pIdx || (secondary != null && pid == secondary.index)) {
-                        // KMK <--
+                        // VIEL <--
                         wasEnhancing = true
                         // Actively enhancing: show pure percentage progress, refreshed by
                         // the poll; the number itself moving signals activity.
                         val progress = Waifu2x.getProgressPercent().coerceIn(0, 100)
                         updateStatus(context.stringResource(KMR.strings.reader_status_enhancing_progress, progress))
                     } else if (requested && wasEnhancing) {
-                        // KMK --> Reverts d68236e31: the tail after active inference (a request
+                        // VIEL --> Reverts d68236e31: the tail after active inference (a request
                         // still registered once the progress id moved on) is its own FINISHING
                         // stage again, not a continuation of the enhancing label. The SAVING
                         // phase label above already covers the decode-side save window; this
                         // branch covers the post-active window while the cache write settles.
                         updateStatus(context.stringResource(KMR.strings.reader_status_finishing))
-                        // KMK <--
+                        // VIEL <--
                     } else if (requested) {
                         updateStatus(context.stringResource(KMR.strings.reader_status_queued))
                     } else {
-                        // KMK -->
+                        // VIEL -->
                         // The request left the queue without this poll seeing its Saved/Skipped
                         // event: the poll subscribes after the request is enqueued, and in
                         // double-page modes a sibling holder watches the same key. Cache checks
@@ -1641,13 +1642,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             val transformedSource = buildEnhancedDisplaySource(cachedFileNow, secondaryFileNow)
                             if (transformedSource != null) {
                                 withUIContext {
-                                    // KMK --> stale revision must not swap a recycled view's image.
+                                    // VIEL --> stale revision must not swap a recycled view's image.
                                     if (key.revision == imageRevision) {
                                         setProcessedSource(cachedFileNow, transformedSource = transformedSource)
                                     } else {
                                         transformedSource.close()
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                 }
                                 return@launchIO
                             }
@@ -1660,13 +1661,13 @@ open class ReaderPageImageView @JvmOverloads constructor(
                             val source = ImageEnhancementCache.readCachedImage(cachedFileNow)
                             if (source != null) {
                                 withUIContext {
-                                    // KMK --> same revision guard as above.
+                                    // VIEL --> same revision guard as above.
                                     if (key.revision == imageRevision) {
                                         setProcessedSource(cachedFileNow, transformedSource = source)
                                     } else {
                                         source.close()
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                 }
                                 return@launchIO
                             }
@@ -1683,7 +1684,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
                                 forceCurrentPage = pIdx == currentGlobalPageIndex,
                             )
                         }
-                        // KMK --> half-missing recoveries: the spread is one enhancement away
+                        // VIEL --> half-missing recoveries: the spread is one enhancement away
                         // from being swappable in either direction, so re-queue just the missing
                         // half (bounded) and keep waiting. Exiting here would strand the spread:
                         // the heal window keys on the primary index and legitimately rejects it
@@ -1752,7 +1753,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
                                 withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
                             }
                         }
-                        // KMK <--
+                        // VIEL <--
+                        // VIEL <--
                     }
 
                     val event = withTimeoutOrNull(500) {
@@ -1766,22 +1768,22 @@ open class ReaderPageImageView @JvmOverloads constructor(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Error in polling for page $pIdx" }
             } catch (e: OutOfMemoryError) {
-                // KMK --> Enhancement is optional; retain the original image when the
+                // VIEL --> Enhancement is optional; retain the original image when the
                 // cached replacement is too large for this device (upstream 1.3.17).
                 logcat(LogPriority.ERROR, e) { "ReaderPageImageView: Not enough memory for enhanced page $pIdx" }
                 withUIContext { updateStatus(context.stringResource(KMR.strings.reader_status_raw)) }
-                // KMK <--
+                // VIEL <--
             } finally {
-                // KMK --> The shared event flow never completes; its producer must not
+                // VIEL --> The shared event flow never completes; its producer must not
                 // outlive the finished observer (upstream 1.3.17).
                 cacheEvents.cancel()
-                // KMK <--
+                // VIEL <--
             }
         }
     }
-    // KMK <--
+    // VIEL <--
 
-    // KMK -->
+    // VIEL -->
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         imageRevision++
@@ -1800,7 +1802,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
         preferenceJobs = emptyList()
         viewScope.cancel()
     }
-    // KMK <--
+    // VIEL <--
 
     private fun prepareAnimatedImageView() {
         if (pageView is AppCompatImageView) return
@@ -1869,9 +1871,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 },
             )
             .crossfade(false)
-            // KMK -->
+            // VIEL -->
             .allowHardware(false) // Disable hardware bitmaps for GIFs
-            // KMK <--
+            // VIEL <--
             .build()
         context.imageLoader.enqueue(request)
     }
@@ -1889,11 +1891,11 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val cropBorders: Boolean = false,
         val zoomStartPosition: ZoomStartPosition = ZoomStartPosition.CENTER,
         val landscapeZoom: Boolean = false,
-        // KMK -->
+        // VIEL -->
         val disableZoomIn: Boolean = false,
         val doubleTapZoom: Boolean = true,
         val landscapeZoomScaleType: LandscapeZoomScaleType = LandscapeZoomScaleType.FIT,
-        // KMK <--
+        // VIEL <--
     )
 
     enum class ZoomStartPosition {
@@ -1903,16 +1905,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
     }
 
     companion object {
-        // KMK -->
+        // VIEL -->
         /** Page index of the page currently shown, used by enhancement jobs to self-heal. */
         @Volatile var currentGlobalPageIndex: Int = -1
-        // KMK <--
+        // VIEL <--
     }
 }
 
 private const val MAX_ZOOM_SCALE = 5F
 
-// KMK -->
+// VIEL -->
 private const val PROCESSED_SWAP_DURATION_MS = 280L
 
 /**
@@ -1921,4 +1923,4 @@ private const val PROCESSED_SWAP_DURATION_MS = 280L
  * poll pass, decoding the whole page each time.
  */
 private const val MAX_HEAL_ATTEMPTS = 2
-// KMK <--
+// VIEL <--

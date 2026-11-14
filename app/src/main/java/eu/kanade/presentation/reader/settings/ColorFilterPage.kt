@@ -148,7 +148,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         pref = screenModel.preferences.invertedColors(),
     )
 
-    // KMK --> Image enhancement (upscale)
+    // VIEL --> Image enhancement (upscale)
     val realCuganEnabled by screenModel.preferences.realCuganEnabled().collectAsState()
 
     CheckboxItem(
@@ -164,11 +164,11 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val realCuganNoiseLevel by screenModel.preferences.realCuganNoiseLevel().collectAsState()
         val realCuganScale by screenModel.preferences.realCuganScale().collectAsState()
         val processingBackend by screenModel.preferences.realCuganProcessingBackend().collectAsState()
-        // KMK -->
+        // VIEL -->
         // Collected early: the precision selects the QNN asset variant and keys
         // the preparation state.
         val precision by screenModel.preferences.realCuganPrecision().collectAsState()
-        // KMK <--
+        // VIEL <--
         val npuDeviceAvailable = remember { Waifu2x.isQualcommNpuAvailable() }
         val mediaTekDeviceAvailable = remember { MediaTekNpu.isDeviceSupported() }
         val useQualcommNpu = processingBackend == Waifu2x.PROCESSING_BACKEND_QUALCOMM_NPU
@@ -183,7 +183,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val qnnPreparationStates by QnnModelContexts.states.collectAsState()
         val mediaTekPreparationStates by MediaTekNpu.states.collectAsState()
         val preparationStates = if (useMediaTekNpu) mediaTekPreparationStates else qnnPreparationStates
-        // KMK -->
+        // VIEL -->
         // Probed before preparation so the FP16 chip and the hint below react
         // even when a cached context short-circuits the normal flow.
         val fp16Supported by QnnModelContexts.fp16Supported.collectAsState()
@@ -191,7 +191,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         val preparationKey = qnnModelName?.let {
             if (useQualcommNpu) QnnModelContexts.stateKey(it, precision) else it
         }
-        // KMK <--
+        // VIEL <--
         var preparationRetry by remember { mutableStateOf(0) }
         LaunchedEffect(processingBackend, qnnModelName, precision, preparationRetry) {
             val modelName = qnnModelName ?: return@LaunchedEffect
@@ -199,7 +199,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
                 if (useMediaTekNpu) {
                     MediaTekNpu.prepare(context, modelName, retry = preparationRetry > 0)
                 } else {
-                    // KMK -->
+                    // VIEL -->
                     // An unsupported FP16 runtime falls back to the bundled INT8
                     // asset when the model has one; otherwise the conclusive probe
                     // result is surfaced by the hint below and float preparation
@@ -211,7 +211,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
                         return@withContext
                     }
                     QnnModelContexts.prepare(context, modelName, retry = preparationRetry > 0, precision = precision)
-                    // KMK <--
+                    // VIEL <--
                 }
             }
         }
@@ -301,7 +301,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
         }
 
         if (qnnModelName != null) {
-            // KMK -->
+            // VIEL -->
             val status = preparationStates[preparationKey]
             // The probe is conclusive for float models: retrying QNN preparation
             // on an integer-only runtime can never succeed, so only the hint
@@ -314,7 +314,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else {
-                // KMK <--
+                // VIEL <--
                 Text(
                     text = stringResource(
                         when (status) {
@@ -472,7 +472,7 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
             }
         }
 
-        // KMK -->
+        // VIEL -->
         // INT8 (W8A8) joins the row only for the model whose quantized DLC ships;
         // a stale precision resolves through the same policy the reader uses.
         val supportedPrecisions = when {
@@ -493,21 +493,21 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
                 )
             }
         }
-        // KMK <--
+        // VIEL <--
         SettingsChipRow(KMR.strings.reader_precision) {
             listOf(
                 0 to stringResource(KMR.strings.reader_precision_fp16),
                 1 to stringResource(KMR.strings.reader_precision_fp32),
                 3 to stringResource(KMR.strings.reader_precision_bf16),
-                // KMK -->
+                // VIEL -->
                 QnnModelContexts.PRECISION_W8A8 to "INT8 (W8A8)",
-                // KMK <--
+                // VIEL <--
             ).filter { (value, _) -> value in supportedPrecisions }.map { (value, name) ->
                 FilterChip(
                     selected = precision == value,
-                    // KMK --> Disable FP16 on runtimes the probe found integer-only.
+                    // VIEL --> Disable FP16 on runtimes the probe found integer-only.
                     enabled = !(useQualcommNpu && value == 0 && fp16Supported == false),
-                    // KMK <--
+                    // VIEL <--
                     onClick = { screenModel.preferences.realCuganPrecision().set(value) },
                     label = { Text(name) },
                 )
@@ -548,10 +548,10 @@ internal fun ColorFilterPage(screenModel: ReaderSettingsScreenModel) {
             pref = screenModel.preferences.realCuganShowStatus(),
         )
     }
-    // KMK <-- Image enhancement (upscale)
+    // VIEL <-- Image enhancement (upscale)
 }
 
-// KMK -->
+// VIEL -->
 /**
  * Width/height limit pair for the enhancement pipeline. The two headings share this layout but
  * clamp different stages: "processing resolution" downscales the model input (prescale), while
@@ -630,7 +630,7 @@ private fun ResolutionNumberField(
 }
 
 private fun Int.toResolutionText(): String = if (this == 0) "" else toString()
-// KMK <--
+// VIEL <--
 
 private fun getColorValue(currentColor: Int, color: Int, mask: Long, bitShift: Int): Int {
     return (color shl bitShift) or (currentColor and mask.inv().toInt())

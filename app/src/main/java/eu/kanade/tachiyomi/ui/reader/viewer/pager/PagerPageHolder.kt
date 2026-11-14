@@ -48,9 +48,9 @@ class PagerPageHolder(
     val viewer: PagerViewer,
     val page: ReaderPage,
     private var extraPage: ReaderPage? = null,
-    // KMK -->
+    // VIEL -->
     @ColorInt private val seedColor: Int? = null,
-    // KMK <--
+    // VIEL <--
 ) : ReaderPageImageView(readerThemedContext), ViewPagerAdapter.PositionableView {
 
     /**
@@ -71,12 +71,12 @@ class PagerPageHolder(
 
     private val scope = MainScope()
 
-    // KMK -->
+    // VIEL -->
     // The initial selection may arrive before ViewPager exposes this holder;
     // on first display, restore the selection-driven enhancement state
     // (target prioritization) that was missed.
     private var hasReceivedSelection = false
-    // KMK <--
+    // VIEL <--
 
     /**
      * Job for loading the page and processing changes to the page's status.
@@ -89,7 +89,7 @@ class PagerPageHolder(
     private var extraLoadJob: Job? = null
 
     init {
-        // KMK -->
+        // VIEL -->
         // Set page context for enhancement priority tracking
         pageIndex = page.index
         mangaId = viewer.activity.viewModel.manga?.id ?: -1L
@@ -119,7 +119,7 @@ class PagerPageHolder(
                 }
             }
         }
-        // KMK <--
+        // VIEL <--
         loadJob = scope.launch { loadPageAndProcessStatus(1) }
         // SY -->
         extraLoadJob = scope.launch { loadPageAndProcessStatus(2) }
@@ -141,9 +141,9 @@ class PagerPageHolder(
         if (progressIndicator == null) {
             progressIndicator = ReaderProgressIndicator(
                 context = context,
-                // KMK -->
+                // VIEL -->
                 seedColor = seedColor,
-                // KMK <--
+                // VIEL <--
             )
             addView(progressIndicator)
         }
@@ -225,7 +225,7 @@ class PagerPageHolder(
 
         try {
             val (source, isAnimated, background) = withIOContext {
-                // KMK --> Prefer the cached enhanced page when available. The cached image is
+                // VIEL --> Prefer the cached enhanced page when available. The cached image is
                 // already a full page; only the display transform is re-applied here. The
                 // snapshot is validated (and a corrupt entry discarded) before it is decoded;
                 // when the entry vanished or is unreadable, fall back to the original stream
@@ -252,7 +252,7 @@ class PagerPageHolder(
                     }
                     Triple(itemSource, isAnimated, background)
                 } else {
-                    // KMK <--
+                    // VIEL <--
                     streamFn().buffered(16).use { source ->
                         // SY -->
                         if (extraPage != null) {
@@ -276,9 +276,9 @@ class PagerPageHolder(
                             Triple(itemSource, isAnimated, background)
                         }
                     }
-                    // KMK -->
+                    // VIEL -->
                 }
-                // KMK <--
+                // VIEL <--
             }
             withUIContext {
                 setImage(
@@ -290,11 +290,11 @@ class PagerPageHolder(
                         cropBorders = viewer.config.imageCropBorders,
                         zoomStartPosition = viewer.config.imageZoomType,
                         landscapeZoom = viewer.config.landscapeZoom,
-                        // KMK -->
+                        // VIEL -->
                         disableZoomIn = viewer.config.disableZoomIn,
                         doubleTapZoom = viewer.config.doubleTapZoom,
                         landscapeZoomScaleType = viewer.config.landscapeZoomScaleType,
-                        // KMK <--
+                        // VIEL <--
                     ),
                 )
                 if (!isAnimated) {
@@ -333,7 +333,7 @@ class PagerPageHolder(
         return splitInHalf(imageSource)
     }
 
-    // KMK -->
+    // VIEL -->
     private val readerPreferences: ReaderPreferences by lazy { Injekt.get() }
 
     /**
@@ -378,9 +378,9 @@ class PagerPageHolder(
         val configHash = ImageEnhancementCache.getConfigHash(readerPreferences)
         return ImageEnhancementCache.getCachedImage(mangaId, chapterId, targetPage.index, configHash, targetPage.enhancementKeySuffix)
     }
-    // KMK <--
+    // VIEL <--
 
-    // KMK -->
+    // VIEL -->
     /**
      * Builds the original (non-enhanced) display source for the bound page(s), used by the
      * view's enhanced-cache recovery. It reuses the display transforms that never mutate
@@ -405,7 +405,7 @@ class PagerPageHolder(
             null
         }
     }
-    // KMK <--
+    // VIEL <--
 
     private fun rotateDualPage(imageSource: BufferedSource): BufferedSource {
         val isDoublePage = ImageUtil.isWideImage(imageSource)
@@ -617,32 +617,32 @@ class PagerPageHolder(
     }
 
     override fun onImageLoaded() {
-        // KMK -->
+        // VIEL -->
         // Restore the missed selection before the first displayed frame releases
         // the enhancement worker (see ImageEnhancer.onVisibleImageDisplayed).
         if (!hasReceivedSelection && viewer.isSelectedHolder(this)) {
             onPageSelected(forward = true)
         }
-        // KMK <--
+        // VIEL <--
         super.onImageLoaded()
         progressIndicator?.hide()
     }
 
-    // KMK -->
+    // VIEL -->
     override fun onPageSelected(forward: Boolean) {
         hasReceivedSelection = true
         super.onPageSelected(forward)
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Called when an image fails to decode.
      */
     override fun onImageLoadError(error: Throwable?) {
-        // KMK -->
+        // VIEL -->
         // A failed enhanced-cache load must not hide the readable original page.
         if (recoverEnhancedCacheLoad(error)) return
-        // KMK <--
+        // VIEL <--
         super.onImageLoadError(error)
         setError(error)
     }

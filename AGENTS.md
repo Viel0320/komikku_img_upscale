@@ -10,7 +10,8 @@ Features: configurable reader, downloads/offline reading, trackers (MyAnimeList,
 |----------|-------------|---------|
 | Mihon | none (base code) | `MR` (`i18n/`) |
 | TachiyomiSY | `// SY -->` … `// SY <--` (legacy `// EXH` blocks also come from SY) | `SYMR` (`i18n-sy/`) |
-| **Komikku** (this repo) | `// KMK -->` … `// KMK <--` | `KMR` (`i18n-kmk/`) |
+| **Komikku** (upstream fork base) | `// KMK -->` … `// KMK <--` | `KMR` (`i18n-kmk/`) |
+| **Viel fork** (this repo's own additions) | `// VIEL -->` … `// VIEL <--` | — |
 
 ---
 
@@ -30,16 +31,16 @@ Before `git push`, confirm the current branch is not `master` or `main` (`git br
 
 ### Fork markers
 
-Every Komikku addition or modification to existing code **must** be wrapped:
+Every fork-authored addition or modification to existing code **must** be wrapped:
 
 ```kotlin
-// KMK -->
+// VIEL -->
 // your code here
-// KMK <--
+// VIEL <--
 ```
 
-- Use `// KMK` for all new code. Never add new `// SY` or `// EXH` blocks.
-- Keep upstream `// SY` / `// EXH` blocks intact; when changing code inside one, wrap your change in a nested `// KMK` block.
+- Use `// VIEL` for code authored in this fork. Code ported from komikku-app keeps `// KMK`; never convert existing `// KMK` blocks to `// VIEL`. Never add new `// SY` or `// EXH` blocks.
+- Keep upstream `// SY` / `// EXH` / `// KMK` blocks intact; when changing code inside one, wrap your change in a nested `// VIEL` block.
 - Markers apply to `.sq` queries and mappers too.
 
 ### Internationalization (strings)
@@ -156,7 +157,7 @@ Package roots: `eu.kanade.tachiyomi.*` (legacy UI), `tachiyomi.*` (domain/data),
 2. **DI:** `addFactory { MyFeature(get()) }` in `KMKDomainModule.kt` (or inside a `// KMK` block in `DomainModule.kt`)
 3. **UI:** ScreenModel + Screen under `app/src/main/java/eu/kanade/tachiyomi/ui/`
 4. **Strings:** `i18n-kmk/src/commonMain/moko-resources/base/strings.xml`, referenced via `KMR`
-5. **Markers:** wrap edits to existing files in `// KMK -->` / `// KMK <--`
+5. **Markers:** wrap edits to existing files in `// VIEL -->` / `// VIEL <--`
 
 Reference: `domain/src/main/java/tachiyomi/domain/category/interactor/HideCategory.kt` and its registration in `DomainModule.kt`.
 

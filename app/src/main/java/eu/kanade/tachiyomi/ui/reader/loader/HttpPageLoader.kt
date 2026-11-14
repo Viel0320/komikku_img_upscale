@@ -82,7 +82,7 @@ internal class HttpPageLoader(
                 }
                     .filter { it.status == Page.State.Queue }
                     .collect { page ->
-                        // KMK -->
+                        // VIEL -->
                         // Atomic claim. Two entries for the same page routinely coexist: the
                         // visible page is offered by both onPageSelected (priority 2) and the
                         // holder bind (priority 1). Leaving Queue here under the page monitor
@@ -96,7 +96,7 @@ internal class HttpPageLoader(
                             page.status = Page.State.LoadPage
                         }
                         internalLoadPage(page)
-                        // KMK <--
+                        // VIEL <--
                     }
             }
             // EXH -->
@@ -168,7 +168,7 @@ internal class HttpPageLoader(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Gives the visible page the same priority as a user retry so a slow or stale preload can
      * never delay the page being read. Offscreen holders keep their lower priority: only this
@@ -182,7 +182,7 @@ internal class HttpPageLoader(
             queue.offer(PriorityPage(page, 2))
         }
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Retries a page. This method is only called from user interaction on the viewer.
@@ -267,7 +267,7 @@ internal class HttpPageLoader(
                 chapterCache.putImageToCache(imageUrl, imageResponse)
             }
 
-            // KMK --> Image enhancement (upscale)
+            // VIEL --> Image enhancement (upscale)
             // Start with original stream
             val streamSource = { chapterCache.getImageFile(imageUrl).inputStream() }
             // Keep a raw source available so enhancement can reprocess this page.
@@ -292,17 +292,17 @@ internal class HttpPageLoader(
                     }
                 }
             }
-            // KMK <--
+            // VIEL <--
             page.status = Page.State.Ready
         } catch (e: Throwable) {
-            // KMK --> A cancelled attempt is not an error: recycling holders and page turns
+            // VIEL --> A cancelled attempt is not an error: recycling holders and page turns
             // interrupt downloads routinely. Queue the page again so returning to it can
             // load it instead of flashing an error badge (upstream 1.3.17).
             if (e is CancellationException) {
                 page.status = Page.State.Queue
                 throw e
             }
-            // KMK <--
+            // VIEL <--
             page.status = Page.State.Error(e)
         }
     }

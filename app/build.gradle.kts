@@ -23,7 +23,7 @@ if (Config.includeTelemetry) {
 
 shortcutHelper.setFilePath("./shortcuts.xml")
 
-// KMK -->
+// VIEL -->
 // Image upscaling (NCNN + Vulkan), ported from HaoweiLi97/mihon_img_upscale.
 val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
@@ -38,14 +38,15 @@ val ncnnSdkDir = providers.gradleProperty("ncnnSdkDir").orNull
     ?: localProperties.getProperty("ncnn.sdk.dir")
     ?: System.getenv("NCNN_SDK_DIR")
     ?: bundledNcnnSdkDir.takeIf { it.exists() }?.absolutePath
+// VIEL <--
 
+// VIEL -->
 // Vendored QAIRT (QNN) headers for compiling the optional NPU backend; the runtime
 // libraries are provided by the com.qualcomm.qti:qnn-runtime Maven dependency.
-// KMK -->
 // Since 1.3.15 parity the NPU models ship as compact FP16 DLC/TFLite assets and are
 // compiled on the device, so the former -Pexclude-qnn-assets APK-stripping step is gone.
 val qnnHeadersDir = rootProject.file("third_party/qnn-include")
-// KMK <--
+// VIEL <--
 
 android {
     namespace = "eu.kanade.tachiyomi"
@@ -123,7 +124,7 @@ android {
 
             buildConfigField("String", "BUILD_TIME", "\"${getBuildTime(useLastCommitTime = false)}\"")
         }
-        // KMK -->
+        // VIEL -->
         // Same as `preview`, but shipped under its own application id so both can be
         // installed side by side.
         create("viel") {
@@ -131,7 +132,7 @@ android {
 
             applicationIdSuffix = ".viel"
         }
-        // KMK <--
+        // VIEL <--
         create("benchmark") {
             initWith(release)
 
@@ -148,11 +149,11 @@ android {
 
     sourceSets {
         getByName("preview").res.srcDirs("src/beta/res")
-        // KMK -->
+        // VIEL -->
         // `initWith` does not inherit source sets, so the beta resources must be added
         // explicitly to reuse preview's launcher icon/colors.
         getByName("viel").res.srcDirs("src/beta/res")
-        // KMK <--
+        // VIEL <--
         getByName("benchmark").res.srcDirs("src/debug/res")
     }
 
@@ -167,9 +168,9 @@ android {
 
     packaging {
         jniLibs {
-            // KMK -->
+            // VIEL -->
             useLegacyPackaging = true
-            // KMK <--
+            // VIEL <--
             keepDebugSymbols += listOf(
                 "libandroidx.graphics.path",
                 "libarchive-jni",
@@ -217,13 +218,13 @@ android {
         checkReleaseBuilds = false
     }
 
-    // KMK -->
+    // VIEL -->
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
         }
     }
-    // KMK <--
+    // VIEL <--
 }
 
 kotlin {
@@ -248,7 +249,7 @@ kotlin {
 
 dependencies {
     implementation(projects.i18n)
-    // KMK -->
+    // VIEL -->
     implementation(projects.i18nKmk)
     // Qualcomm QNN runtime libraries (libQnnHtp.so, HTP stub/skel libs) for the NPU backend.
     implementation("com.qualcomm.qti:qnn-runtime:2.49.0")
@@ -256,7 +257,7 @@ dependencies {
     // LiteRT runtime + MediaTek NeuroPilot dispatch for the MediaTek NPU backend.
     implementation("com.google.ai.edge.litert:litert:2.3.0")
     implementation("com.google.ai.edge.litert:litert-npu-runtime-mediatek:2.3.0")
-    // KMK <--
+    // VIEL <--
     // SY -->
     implementation(projects.i18nSy)
     // SY <--

@@ -25,12 +25,12 @@ object Waifu2x {
     const val REAL_ESRGAN_STYLE_PHOTO = 1
 
     // Bump when bundled model assets change so existing installations refresh their cache.
-    // KMK -->
+    // VIEL -->
     // Bump to 18: the Real-ESRGAN Photo NCNN graph was regenerated from the official
     // weights with corrected resize parameters (upstream 1.3.16).
     const val BUNDLED_MODEL_CACHE_VERSION = "18"
     internal const val QNN_CONTEXT_CACHE_VERSION = QnnModelContexts.CACHE_VERSION
-    // KMK <--
+    // VIEL <--
 
     @Volatile private var isInitialized = false
 
@@ -143,7 +143,7 @@ object Waifu2x {
 
             if (isRealCuganInitialized) {
                 nativeUpdatePerformanceConfig(tileSleepMs, tileSize)
-                // KMK -->
+                // VIEL -->
                 return initializeBackend(
                     context,
                     resolvedBackend,
@@ -151,7 +151,7 @@ object Waifu2x {
                     if (scale == 3) 14 else 18,
                     resolvedPrecision,
                 )
-                // KMK <--
+                // VIEL <--
             }
 
             val assetPath = if (isPro) "realcugan-pro-models" else "realcugan-models"
@@ -165,9 +165,9 @@ object Waifu2x {
                 effectiveNoiseLevel,
                 scale,
                 tileSleepMs,
-                // KMK -->
+                // VIEL -->
                 ncnnPrecision(currentConfig.precision),
-                // KMK <--
+                // VIEL <--
                 currentConfig.fp16Arithmetic,
                 isPro,
             )
@@ -196,9 +196,9 @@ object Waifu2x {
                     resolvedBackend,
                     qnnModelName(model, scale, effectiveNoiseLevel),
                     if (scale == 3) 14 else 18,
-                    // KMK -->
+                    // VIEL -->
                     resolvedPrecision,
-                    // KMK <--
+                    // VIEL <--
                 )
         }
     }
@@ -230,7 +230,7 @@ object Waifu2x {
 
         if (isRealEsrganInitialized) {
             nativeUpdatePerformanceConfig(tileSleepMs, tileSize)
-            // KMK -->
+            // VIEL -->
             return initializeBackend(
                 context,
                 resolvedBackend,
@@ -238,7 +238,7 @@ object Waifu2x {
                 if (isPhotoStyle) 32 else 16,
                 resolvedPrecision,
             )
-            // KMK <--
+            // VIEL <--
         }
 
         val assetPath = if (isPhotoStyle) {
@@ -256,9 +256,9 @@ object Waifu2x {
             modelDir,
             modelScale,
             outputScale,
-            // KMK -->
+            // VIEL -->
             ncnnPrecision(config.precision),
-            // KMK <--
+            // VIEL <--
             config.fp16Arithmetic,
         )
         if (isRealEsrganInitialized) {
@@ -282,9 +282,9 @@ object Waifu2x {
                 resolvedBackend,
                 qnnModelName(MODEL_REAL_ESRGAN_ANIME, outputScale, 0, style),
                 if (isPhotoStyle) 32 else 16,
-                // KMK -->
+                // VIEL -->
                 resolvedPrecision,
-                // KMK <--
+                // VIEL <--
             )
     }
 
@@ -464,7 +464,7 @@ object Waifu2x {
 
         if (isW2xExInitialized) {
             nativeUpdatePerformanceConfig(tileSleepMs, tileSize)
-            // KMK -->
+            // VIEL -->
             return initializeBackend(
                 context,
                 resolvedBackend,
@@ -472,16 +472,16 @@ object Waifu2x {
                 selectedModel.padding,
                 resolvedPrecision,
             )
-            // KMK <--
+            // VIEL <--
         }
 
         isW2xExInitialized = nativeInitW2xEx(
             modelDir,
             modelStem,
             effectiveScale,
-            // KMK -->
+            // VIEL -->
             ncnnPrecision(config.precision),
-            // KMK <--
+            // VIEL <--
             config.fp16Arithmetic,
             selectedModel.padding,
         )
@@ -507,9 +507,9 @@ object Waifu2x {
                 resolvedBackend,
                 qnnModelName(model, effectiveScale, 0),
                 selectedModel.padding,
-                // KMK -->
+                // VIEL -->
                 resolvedPrecision,
-                // KMK <--
+                // VIEL <--
             )
     }
 
@@ -706,7 +706,7 @@ object Waifu2x {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     // Komikku: every model ships in assets, so a missing model is a packaging error —
     // fail fast instead of blocking the decode pipeline on a network download.
     // @Synchronized guards concurrent extraction from the different init entry points.
@@ -749,7 +749,7 @@ object Waifu2x {
             null
         }
     }
-    // KMK <--
+    // VIEL <--
 
     private fun File.hasNcnnModels(): Boolean {
         val files = listFiles().orEmpty()
@@ -812,7 +812,7 @@ object Waifu2x {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Single W8A8-capability gate shared by [resolvePrecision] and the page-cache key,
      * so the two can never drift. Noise is excluded on purpose: the only W8A8 asset
@@ -820,7 +820,7 @@ object Waifu2x {
      */
     fun qnnSupportsW8a8(model: Int, scale: Int, realEsrganStyle: Int = REAL_ESRGAN_STYLE_ANIME): Boolean =
         QnnModelContexts.supportsW8a8(qnnModelName(model, scale, 0, realEsrganStyle))
-    // KMK <--
+    // VIEL <--
 
     // Preserve an explicit NPU choice even if the device/model cannot execute it.
     // Initialization then fails and the reader keeps the original image.
@@ -828,7 +828,7 @@ object Waifu2x {
         requestedBackend.takeIf { it in PROCESSING_BACKEND_VULKAN..PROCESSING_BACKEND_MEDIATEK_NPU }
             ?: PROCESSING_BACKEND_VULKAN
 
-    // KMK -->
+    // VIEL -->
     fun resolvePrecision(
         requestedPrecision: Int,
         processingBackend: Int,
@@ -841,7 +841,7 @@ object Waifu2x {
             // other NPU request stays FP16 here so cache keys remain stable across
             // devices. Integer-only runtimes fall back to W8A8 at QNN initialization
             // instead of failing prepare().
-            // KMK --> Precision value 4 was the retired on-device W8A16 setting from the
+            // VIEL --> Precision value 4 was the retired on-device W8A16 setting from the
             // 1.3.17 beta 1 experiment; migrate it to INT8 for an INT8-capable model so
             // readers upgrading from a beta keep their choice (upstream 1.3.17 beta 2).
             return if ((requestedPrecision == QnnModelContexts.PRECISION_W8A8 || requestedPrecision == 4) &&
@@ -851,7 +851,7 @@ object Waifu2x {
             } else {
                 0
             }
-            // KMK <--
+            // VIEL <--
         }
         if (resolveProcessingBackend(processingBackend, model, scale) != PROCESSING_BACKEND_VULKAN) return 0
         return requestedPrecision.takeIf { it == 0 || it == 1 || it == 3 } ?: 0
@@ -860,7 +860,7 @@ object Waifu2x {
     // The ncnn runtime knows no integer graph; an INT8 request that ends up on a
     // float backend (e.g. the Photo style) must not leak value 2 into native init.
     private fun ncnnPrecision(precision: Int): Int = if (precision == QnnModelContexts.PRECISION_W8A8) 0 else precision
-    // KMK <--
+    // VIEL <--
 
     private fun backendName(backend: Int): String = when (backend) {
         PROCESSING_BACKEND_QUALCOMM_NPU -> "Qualcomm NPU"
@@ -868,7 +868,7 @@ object Waifu2x {
         else -> "Vulkan"
     }
 
-    // KMK --> The precision selects the bundled QNN asset (FP16 or W8A8) to compile.
+    // VIEL --> The precision selects the bundled QNN asset (FP16 or W8A8) to compile.
     private fun initializeBackend(context: Context, backend: Int, modelName: String?, padding: Int, precision: Int): Boolean {
         nativeSetProcessingBackend(3) // Block execution until the selected model is ready.
         val ready = runCatching {
@@ -913,7 +913,7 @@ object Waifu2x {
             android.util.Log.w("Waifu2x", "Unable to initialize Qualcomm NPU; enhancement skipped", it)
         }.getOrDefault(false)
     }
-    // KMK <--
+    // VIEL <--
 
     fun scaleBitmapNative(input: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap? {
         if (input.isRecycled) return null

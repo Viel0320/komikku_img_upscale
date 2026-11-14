@@ -53,18 +53,18 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
         }
 
         return resources.source().use { source ->
-            // KMK --> ownership is explicit: the decoded bitmap is handed to Coil on
+            // VIEL --> ownership is explicit: the decoded bitmap is handed to Coil on
             // success and released by the finally below on every other exit path.
             var bitmap: Bitmap? = null
             var transferred = false
             try {
                 var sampleSize = 1
 
-                // KMK --> enhanced bitmap produced by the on-the-fly path, returned below
+                // VIEL --> enhanced bitmap produced by the on-the-fly path, returned below
                 var enhancedResult: Bitmap? = null
-                // KMK <--
+                // VIEL <--
 
-                // KMK --> Enhancement must see the source resolution. Sampling to the reader's
+                // VIEL --> Enhancement must see the source resolution. Sampling to the reader's
                 // display size first permanently discards detail before the model runs.
                 val decodeAtSourceResolution = options.enhanced &&
                     options.mangaId != -1L &&
@@ -72,7 +72,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                     options.pageIndex != -1 &&
                     runCatching { Injekt.get<ReaderPreferences>().realCuganEnabled().get() }
                         .getOrDefault(false)
-                // KMK <--
+                // VIEL <--
 
                 // 1. Attempt decoding with native ImageDecoder (for AVIF/JXL/HEIF)
                 bitmap = run {
@@ -89,9 +89,9 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                     val nativeDecoder = try {
                         ImageDecoder.newInstance(
                             // SY -->
-                            // KMK --> Keep the original unread so a failed native decode can use BitmapFactory.
+                            // VIEL --> Keep the original unread so a failed native decode can use BitmapFactory.
                             coverStream ?: source.peek().inputStream(),
-                            // KMK <--
+                            // VIEL <--
                             // SY <--
                             options.cropBorders,
                             displayProfile,
@@ -172,14 +172,14 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                     return@use null
                 }
 
-                // KMK -->
+                // VIEL -->
                 logcat(LogPriority.DEBUG) {
                     "TachiyomiImageDecoder: decoded ${bitmap.width}x${bitmap.height}, " +
                         "sampleSize=$sampleSize, sourceResolution=$decodeAtSourceResolution"
                 }
-                // KMK <--
+                // VIEL <--
 
-                // KMK --> --- Enhancement Integration ---
+                // VIEL --> --- Enhancement Integration ---
                 if (options.enhanced) {
                     val preferences = Injekt.get<ReaderPreferences>()
                     if (preferences.realCuganEnabled().get()) {
@@ -236,10 +236,10 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         logcat(LogPriority.DEBUG) {
                                             "TachiyomiImageDecoder: Skipping enhancement for page $pageIndex - source ${bitmap.width}x${bitmap.height} exceeds max resolution ${skipMaxWidth}x$skipMaxHeight"
                                         }
-                                        // KMK --> the skip marker is written once at the inference
+                                        // VIEL --> the skip marker is written once at the inference
                                         // decision below, which also covers the NPU-unsupported path.
                                         shouldSkipEnhancement = true
-                                        // KMK <--
+                                        // VIEL <--
                                     }
 
                                     // --- Performance Mode ---
@@ -259,7 +259,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         model,
                                         effectiveScale,
                                     )
-                                    // KMK --> Resolve precision through Waifu2x so an explicit W8A8 (2)
+                                    // VIEL --> Resolve precision through Waifu2x so an explicit W8A8 (2)
                                     // request survives; the previous inline filter demoted it to FP16 (0),
                                     // which fails QNN preparation on integer-only Hexagon devices
                                     // (upstream 1.3.18, 7af1ad0f).
@@ -270,21 +270,21 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         effectiveScale,
                                         realEsrganStyle,
                                     )
-                                    // KMK <--
-                                    // KMK --> an explicitly selected NPU only runs models with packaged
+                                    // VIEL <--
+                                    // VIEL --> an explicitly selected NPU only runs models with packaged
                                     // NPU support; anything else keeps the original image.
                                     if (processingBackend != Waifu2x.PROCESSING_BACKEND_VULKAN &&
                                         !Waifu2x.isQualcommNpuModelSupported(model, effectiveScale)
                                     ) {
                                         shouldSkipEnhancement = true
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                     if (effectiveScale != scale) {
                                         logcat(LogPriority.DEBUG) { "TachiyomiImageDecoder: Model $model only supports ${effectiveScale}x, clamping from ${scale}x" }
                                     }
 
-                                    // KMK --> prescaling produces a temporary input bitmap; the
-                                    // KMK --> original stays intact for display when enhancement fails.
+                                    // VIEL --> prescaling produces a temporary input bitmap; the
+                                    // VIEL --> original stays intact for display when enhancement fails.
                                     var enhancementInput = bitmap
                                     try {
                                         if (!shouldSkipEnhancement) {
@@ -321,7 +321,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                         // --- End Resolution Limits / Prescale ---
 
                                         if (!shouldSkipEnhancement) {
-                                            // KMK --> inference (init + process) runs on the dedicated
+                                            // VIEL --> inference (init + process) runs on the dedicated
                                             // enhance dispatcher; the decoder thread stays free.
                                             withContext(enhanceDispatcher) {
                                                 currentCoroutineContext().ensureActive()
@@ -339,7 +339,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                     }
                                                 }
                                                 val processed = if (initialized) {
-                                                    // KMK --> the reader labels this stage "enhancing"
+                                                    // VIEL --> the reader labels this stage "enhancing"
                                                     // with live progress once native work starts.
                                                     currentCoroutineContext().ensureActive()
                                                     ImageEnhancer.updateProcessingPhase(
@@ -349,7 +349,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                         pageVariant,
                                                         ImageEnhancer.ProcessingPhase.ENHANCING,
                                                     )
-                                                    // KMK <--
+                                                    // VIEL <--
                                                     when (model) {
                                                         0, 1 -> Waifu2x.processRealCugan(enhancementInput, pageIndex)
                                                         Waifu2x.MODEL_REAL_ESRGAN_ANIME -> Waifu2x.processRealESRGAN(enhancementInput, pageIndex)
@@ -372,7 +372,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                         currentCoroutineContext().ensureActive()
 
                                                         // --- Output Resolution Limit (prevent Canvas errors) ---
-                                                        // KMK --> The cap also includes the WebP encoder's
+                                                        // VIEL --> The cap also includes the WebP encoder's
                                                         // 16383px hard limit: with the processing size set
                                                         // to 0x0, a tall webtoon page scales to heights above
                                                         // 16383 while a 16384 device texture limit let them
@@ -403,11 +403,11 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                         // --- End Output Resolution Limit ---
 
                                                         if (ImageEnhancementCache.isDisplayable(result)) {
-                                                            // KMK --> the enhanced bitmap is handed to the display, so
+                                                            // VIEL --> the enhanced bitmap is handed to the display, so
                                                             // the cache writer receives its own copy and encodes it
                                                             // off the inference thread instead of blocking it.
                                                             ownsResult = false
-                                                            // KMK --> the reader labels the encode hand-off "finishing".
+                                                            // VIEL --> the reader labels the encode hand-off "finishing".
                                                             ImageEnhancer.updateProcessingPhase(
                                                                 mangaId,
                                                                 chapterId,
@@ -415,7 +415,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                                 pageVariant,
                                                                 ImageEnhancer.ProcessingPhase.SAVING,
                                                             )
-                                                            // KMK <--
+                                                            // VIEL <--
                                                             // Settled before the enqueue can suspend, so a
                                                             // cancellation still hands the bitmap back for recycling.
                                                             enhancedResult = result
@@ -447,7 +447,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                         if (ownsResult && result !== bitmap && !result.isRecycled) result.recycle()
                                                     }
                                                 } else {
-                                                    // KMK --> A cancelled native call also returns null, so cancel
+                                                    // VIEL --> A cancelled native call also returns null, so cancel
                                                     // first: only a real initialization/inference failure is
                                                     // remembered as skipped, otherwise polling could retry a
                                                     // dead request forever (upstream 1.3.17).
@@ -456,41 +456,41 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                                                     logcat(LogPriority.WARN) {
                                                         "TachiyomiImageDecoder: Enhancement unavailable for page $pageIndex/$pageVariant; keeping original"
                                                     }
-                                                    // KMK <--
+                                                    // VIEL <--
                                                 }
-                                            } // KMK --> end withContext(enhanceDispatcher)
+                                            } // VIEL --> end withContext(enhanceDispatcher)
                                         } else {
-                                            // KMK --> skipped pages (size limit, unsupported NPU model) are
+                                            // VIEL --> skipped pages (size limit, unsupported NPU model) are
                                             // remembered so polling reports RAW instead of retrying forever.
                                             markEnhancementSkipped()
-                                            // KMK <--
+                                            // VIEL <--
                                         }
                                     } finally {
-                                        // KMK --> the prescaled input is temporary; the original bitmap
-                                        // KMK --> is retained for display whenever no enhanced result was produced.
+                                        // VIEL --> the prescaled input is temporary; the original bitmap
+                                        // VIEL --> is retained for display whenever no enhanced result was produced.
                                         if (enhancementInput !== bitmap && !enhancementInput.isRecycled) {
                                             enhancementInput.recycle()
                                         }
                                     }
-                                    // KMK <--
+                                    // VIEL <--
                                 } catch (e: CancellationException) {
                                     enhancedResult?.let { if (!it.isRecycled) it.recycle() }
                                     enhancedResult = null
                                     throw e
                                 } catch (e: Exception) {
-                                    // KMK --> a failed enhancement attempt is remembered as skipped;
+                                    // VIEL --> a failed enhancement attempt is remembered as skipped;
                                     // polling then reports RAW instead of re-queueing the page.
                                     markEnhancementSkipped()
-                                    // KMK <--
+                                    // VIEL <--
                                     logcat(LogPriority.ERROR, e) { "TachiyomiImageDecoder: Failed to enhance image on-the-fly" }
                                 }
                             }
                         }
                     }
                 }
-                // KMK <-- --- End Enhancement Integration ---
+                // VIEL <-- --- End Enhancement Integration ---
 
-                // KMK --> hand back the enhanced image when the on-the-fly path produced one;
+                // VIEL --> hand back the enhanced image when the on-the-fly path produced one;
                 // prepareForDisplay takes ownership of whichever bitmap it receives.
                 val enhanced = enhancedResult
                 enhancedResult = null
@@ -512,26 +512,26 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
                 logcat(LogPriority.ERROR, e) { "TachiyomiImageDecoder: Critical failure during decode" }
                 null
             } catch (e: OutOfMemoryError) {
-                // KMK --> decoding is optional: record the page as skipped and let the
+                // VIEL --> decoding is optional: record the page as skipped and let the
                 // reader keep its previous image instead of crashing the process.
                 markEnhancementSkipped()
                 logcat(LogPriority.ERROR, e) {
                     "TachiyomiImageDecoder: Not enough memory; keeping original reader image"
                 }
                 null
-                // KMK <--
+                // VIEL <--
             } finally {
-                // KMK --> nothing outlives this call: on any failure or cancellation the
+                // VIEL --> nothing outlives this call: on any failure or cancellation the
                 // decoded bitmap is released here instead of leaking until GC.
                 if (!transferred) {
                     bitmap?.let { if (!it.isRecycled) it.recycle() }
                 }
-                // KMK <--
+                // VIEL <--
             }
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Persists a "skipped" marker for this page so status polling and retry heuristics treat
      * the enhancement as intentionally unavailable instead of endlessly re-requesting it.
@@ -548,9 +548,9 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
             options.pageVariant,
         )
     }
-    // KMK <--
+    // VIEL <--
 
-    // KMK -->
+    // VIEL -->
     private fun decodeCachedEnhancedImage(): Bitmap? {
         if (!options.enhanced) return null
 
@@ -590,7 +590,7 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
         )
         return null
     }
-    // KMK <--
+    // VIEL <--
 
     private fun prepareForDisplay(source: Bitmap): Bitmap {
         if (options.bitmapConfig != Bitmap.Config.HARDWARE || !ImageUtil.canUseHardwareBitmap(source)) {
@@ -635,15 +635,15 @@ class TachiyomiImageDecoder(private val resources: ImageSource, private val opti
     companion object {
         var displayProfile: ByteArray? = null
 
-        // KMK -->
+        // VIEL -->
         // Enhancement inference takes seconds; run it on a dedicated single-thread
         // dispatcher instead of occupying the shared Coil decoder pool (3 threads).
         private val enhanceDispatcher = Dispatchers.IO.limitedParallelism(1)
-        // KMK <--
+        // VIEL <--
     }
 }
 
-// KMK -->
+// VIEL -->
 private fun nativeScaleBitmap(
     source: Bitmap,
     targetWidth: Int,
@@ -661,4 +661,4 @@ private fun nativeScaleBitmap(
         true,
     )
 }
-// KMK <--
+// VIEL <--

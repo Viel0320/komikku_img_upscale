@@ -40,10 +40,10 @@ class WebtoonViewer(
     val activity: ReaderActivity,
     val isContinuous: Boolean = true,
     private val tapByPage: Boolean = false,
-    // KMK -->
+    // VIEL -->
     @param:ColorInt private val seedColor: Int? = null,
     private val readerPreferences: ReaderPreferences = Injekt.get(),
-    // KMK <--
+    // VIEL <--
 ) : Viewer {
 
     val downloadManager: DownloadManager by injectLazy()
@@ -80,9 +80,9 @@ class WebtoonViewer(
      */
     private val adapter = WebtoonAdapter(
         this,
-        // KMK -->
+        // VIEL -->
         seedColor = seedColor,
-        // KMK <--
+        // VIEL <--
     )
 
     /**
@@ -92,9 +92,9 @@ class WebtoonViewer(
     var currentPage: Any? = null
 
     private val threshold: Int =
-        // KMK -->
+        // VIEL -->
         readerPreferences
-            // KMK <--
+            // VIEL <--
             .readerHideThreshold()
             .get()
             .threshold
@@ -174,7 +174,7 @@ class WebtoonViewer(
             frame.doubleTapZoom = it
         }
 
-        // KMK -->
+        // VIEL -->
         config.pinchToZoomChangedListener = {
             frame.pinchToZoom = it
         }
@@ -206,7 +206,7 @@ class WebtoonViewer(
                 }
             }
         }
-        // KMK <--
+        // VIEL <--
 
         config.zoomPropertyChangedListener = {
             frame.zoomOutDisabled = it
@@ -253,9 +253,9 @@ class WebtoonViewer(
      */
     override fun destroy() {
         super.destroy()
-        // KMK -->
+        // VIEL -->
         eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.cancelAll("webtoon viewer destroyed")
-        // KMK <--
+        // VIEL <--
         scope.cancel()
     }
 
@@ -266,10 +266,10 @@ class WebtoonViewer(
     private fun onPageSelected(page: ReaderPage, allowPreload: Boolean) {
         val pages = page.chapter.pages ?: return
         logcat { "onPageSelected: ${page.number}/${pages.size}" }
-        // KMK -->
+        // VIEL -->
         ReaderPageImageView.currentGlobalPageIndex = page.index
         eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.reprioritizeAround(page.index, page.enhancementKeySuffix)
-        // KMK <--
+        // VIEL <--
         activity.onPageSelected(page)
 
         // Preload next chapter once we're within the last 5 pages of the current chapter

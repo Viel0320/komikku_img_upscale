@@ -17,13 +17,13 @@ open class ReaderPage(
 
 ) : Page(index, url, imageUrl, null), ReaderItem {
 
-    // KMK -->
+    // VIEL -->
     /** Optional raw stream kept around so image enhancement can reprocess this page. */
     var enhancementStream: (() -> InputStream)? = null
 
     /** Extra key appended to enhancement cache keys (e.g. split page variants). */
     var enhancementKeySuffix: String = ""
-    // KMK <--
+    // VIEL <--
 
     open lateinit var chapter: ReaderChapter
 

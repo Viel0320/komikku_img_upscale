@@ -13,30 +13,30 @@ import java.security.MessageDigest
 
 /** Compiles bundled FP16 or W8A8 DLCs once per model/runtime/device, outside the image cache. */
 object QnnModelContexts {
-    // KMK -->
+    // VIEL -->
     // 22 tracks the upstream identity format that mixes the precision variant into
     // the context hash; older FP16 caches recompile once and are then reclaimed.
     const val CACHE_VERSION = "22"
     const val PRECISION_W8A8 = 2
-    // KMK <--
+    // VIEL <--
     private const val RUNTIME_VERSION = "2.49.0"
     private const val TAG = "QnnModelContexts"
 
     private val mutableStates = MutableStateFlow<Map<String, NpuModelStatus>>(emptyMap())
     val states = mutableStates.asStateFlow()
 
-    // KMK -->
+    // VIEL -->
     // Runtime FP16 capability; null while undetermined so inconclusive probes
     // are retried instead of permanently disabling the FP16 option.
     private val mutableFp16Supported = MutableStateFlow<Boolean?>(null)
     val fp16Supported = mutableFp16Supported.asStateFlow()
-    // KMK <--
+    // VIEL <--
 
     init {
         runCatching { System.loadLibrary("waifu2x-jni") }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Probes the actual HTP backend with a minimal FP16 operation instead of
      * trusting the architecture allowlist, so integer-only SoCs are detected
@@ -72,19 +72,19 @@ object QnnModelContexts {
         require(precision in supportedPrecisions(modelName)) { "INT8 W8A8 is unavailable for $modelName" }
         return if (precision == PRECISION_W8A8) "$modelName-w8a8" else modelName
     }
-    // KMK <--
+    // VIEL <--
 
     internal fun contextFile(context: Context, modelName: String, precision: Int = 0): File {
         val manifest =
             JSONObject(context.assets.open("qnn-models/manifest.json").bufferedReader().use { it.readText() })
-        // KMK -->
+        // VIEL -->
         val asset = assetName(modelName, precision)
         require(manifest.has(asset) && modelName.matches(Regex("[a-z0-9-]+"))) { "Unknown QNN model: $asset" }
         val modelHash = manifest.getString(asset)
-        // KMK <--
-        // KMK --> INT8 preparation does not depend on FP16 support.
+        // VIEL <--
+        // VIEL --> INT8 preparation does not depend on FP16 support.
         val architecture = QualcommHtp.architecture(context) ?: error("No supported HTP runtime")
-        // KMK <--
+        // VIEL <--
         // A driver/OS update can invalidate compiled binaries even on the same HTP architecture.
         val identity = listOf(
             CACHE_VERSION,
@@ -93,27 +93,27 @@ object QnnModelContexts {
             architecture.toString(),
             Build.FINGERPRINT,
             Build.SUPPORTED_ABIS.first(),
-            // KMK -->
+            // VIEL -->
             if (precision == PRECISION_W8A8) "w8a8" else "fp16",
-            // KMK <--
+            // VIEL <--
         ).joinToString("|")
         val key = sha256(identity.toByteArray()).take(32)
-        // KMK --> Integer and float contexts live in sibling directories.
+        // VIEL --> Integer and float contexts live in sibling directories.
         val variant = if (precision == PRECISION_W8A8) "w8a8/" else ""
-        // KMK <--
+        // VIEL <--
         return File(context.noBackupFilesDir, "qnn-contexts/$modelName/$variant$key/context.bin")
     }
 
     /** Blocking: call on an IO worker. Serialization also prevents duplicate preparations from the UI and decoder. */
     @Synchronized
     fun prepare(context: Context, modelName: String, retry: Boolean = false, precision: Int = 0): File? {
-        // KMK -->
+        // VIEL -->
         val stateKey = stateKey(modelName, precision)
-        // KMK <--
+        // VIEL <--
         val previous = mutableStates.value[stateKey]
         if (previous is NpuModelStatus.Failed && !retry) return null
         return runCatching {
-            // KMK -->
+            // VIEL -->
             // INT8 skips the FP16 requirement so integer-only runtimes still have
             // a working NPU path; float compilation fails here with a clear message
             // instead of an opaque QNN validation error.
@@ -122,7 +122,7 @@ object QnnModelContexts {
                 "FP16 is unavailable on this device; choose an INT8-capable model or Vulkan"
             }
             val binary = contextFile(context, modelName, precision)
-            // KMK <--
+            // VIEL <--
             val directory = requireNotNull(binary.parentFile)
             check(directory.isDirectory || directory.mkdirs()) { "Unable to create NPU model directory" }
             val checksum = File(directory, "context.sha256")
@@ -160,11 +160,11 @@ object QnnModelContexts {
             }
             setState(stateKey, NpuModelStatus.Ready(binary))
             // Reclaim obsolete versions only after a replacement has been successfully prepared.
-            // KMK --> Hash-named check keeps the sibling w8a8/ variant directory alive.
+            // VIEL --> Hash-named check keeps the sibling w8a8/ variant directory alive.
             directory.parentFile?.listFiles()?.filter {
                 it.isDirectory && it != directory && it.name.matches(Regex("[a-f0-9]{32}"))
             }?.forEach { it.deleteRecursively() }
-            // KMK <--
+            // VIEL <--
             binary
         }.onFailure { error ->
             Log.w(TAG, "Unable to prepare $modelName; enhancement skipped", error)
@@ -194,7 +194,7 @@ object QnnModelContexts {
 
     private external fun nativeCompile(dlcPath: String, contextPath: String, nativeLibraryDir: String): String
 
-    // KMK -->
+    // VIEL -->
     private external fun nativeFp16Support(nativeLibraryDir: String): Int
-    // KMK <--
+    // VIEL <--
 }

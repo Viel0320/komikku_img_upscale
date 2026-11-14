@@ -30,14 +30,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 object ImageEnhancer {
-    // KMK -->
+    // VIEL -->
     // Distinguishes what the actively processed page is doing so the reader can label
     // model preparation, native inference and cache saving separately (upstream 1.3.17).
     enum class ProcessingPhase { PREPARING, ENHANCING, SAVING }
 
     @Volatile
     private var activePhase = ProcessingPhase.PREPARING
-    // KMK <--
+    // VIEL <--
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     // Values identify individual attempts: cancelling and retrying a page can happen
@@ -55,10 +55,10 @@ object ImageEnhancer {
     private val seqGenerator = AtomicInteger(0)
     private val generation = AtomicInteger(0)
 
-    // KMK -->
+    // VIEL -->
     private val runtimeInitialized = AtomicBoolean(false)
     private val preferences: ReaderPreferences by lazy { Injekt.get() }
-    // KMK <--
+    // VIEL <--
 
     @Volatile
     private var lastResetTime = 0L
@@ -69,11 +69,11 @@ object ImageEnhancer {
     @Volatile
     private var initialTargetEnqueued = false
 
-    // KMK -->
+    // VIEL -->
     // Model initialization/inference must not compete with the reader's first
     // original-image decode or replace it before its first frame is visible.
     private var waitingForVisibleImage = false
-    // KMK <--
+    // VIEL <--
 
     @Volatile
     private var activeMangaId = -1L
@@ -167,12 +167,12 @@ object ImageEnhancer {
 
                     // Poll under the same monitor as reprioritization/cancellation.
                     // Waiting for work must not hold that monitor or an IO thread.
-                    // KMK -->
+                    // VIEL -->
                     // Hold work until the first original frame of the target page is on screen.
                     val req = synchronized(this@ImageEnhancer) {
                         if (waitingForVisibleImage) null else queue.poll()
                     }
-                    // KMK <--
+                    // VIEL <--
                     if (req == null) {
                         queueSignal.receive()
                         continue
@@ -187,10 +187,10 @@ object ImageEnhancer {
                         logcat(LogPriority.ERROR, e) { "ImageEnhancer: Worker loop error" }
                     }
                 } catch (e: OutOfMemoryError) {
-                    // KMK --> An optional enhancement must not kill the process or
+                    // VIEL --> An optional enhancement must not kill the process or
                     // permanently stop the queue; drop the failed attempt and continue.
                     logcat(LogPriority.ERROR, e) { "ImageEnhancer: Not enough memory for enhancement" }
-                    // KMK <--
+                    // VIEL <--
                 }
             }
         }
@@ -230,7 +230,7 @@ object ImageEnhancer {
         pageVariant: String = "",
         dataProvider: () -> Any?,
     ) {
-        // KMK -->
+        // VIEL -->
         // Capture the generation before runtime init/cache I/O so a reset racing the
         // enhanced-cache lookup cannot let a stale request slip into the fresh queue.
         val requestGeneration = generation.get()
@@ -242,13 +242,13 @@ object ImageEnhancer {
         ) {
             return
         }
-        // KMK <--
+        // VIEL <--
         if (ImageEnhancementCache.isSavePending(mangaId, chapterId, pageIndex, pageVariant, configHash)) return
 
         enqueueRequest(context, mangaId, chapterId, pageIndex, highPriority, pageVariant, requestGeneration, dataProvider)
     }
 
-    // KMK -->
+    // VIEL -->
     // Only in-memory queue state is protected here. Cache I/O must never hold
     // the monitor used by the UI for page selection and progress queries.
     @Synchronized
@@ -271,14 +271,14 @@ object ImageEnhancer {
         val existingRequest = pendingRequests[requestKey]
         if (existingRequest != null) {
             if (effectiveHighPriority) {
-                // KMK --> the page is already promoted, but the worker may still be busy with
+                // VIEL --> the page is already promoted, but the worker may still be busy with
                 // another page; re-asserting the visible request is what preempts it. Without
                 // this call the promotion silently never interrupts an active non-focused page.
                 if (existingRequest.priority == 1) {
                     preemptForVisibleRequest(pageIndex, pageVariant)
                     return
                 }
-                // KMK <--
+                // VIEL <--
                 // Upgrade priority: Remove existing (likely Low) and re-add as High
                 val removed = queue.remove(existingRequest)
                 if (removed) {
@@ -325,6 +325,7 @@ object ImageEnhancer {
 
         logcat(LogPriority.DEBUG) { "ImageEnhancer: Enqueued page $pageIndex/$pageVariant (priority=$priorityLevel)" }
     }
+    // VIEL <--
 
     @Synchronized
     fun reset(initialPageIndex: Int = 0) {
@@ -343,21 +344,21 @@ object ImageEnhancer {
         logcat(LogPriority.DEBUG) { "ImageEnhancer: Resetting state to page $initialPageIndex" }
     }
 
-    // KMK -->
+    // VIEL -->
     // Called once the reader shows the first original frame of the focused page;
     // releases the queue held by [waitingForVisibleImage].
     @Synchronized
     fun onVisibleImageDisplayed(pageIndex: Int, pageVariant: String = "") {
         if (!waitingForVisibleImage) return
         if (!isFocusedTarget(pageIndex, pageVariant)) {
-            // KMK --> A held queue that never matches a visible frame deadlocks every
+            // VIEL --> A held queue that never matches a visible frame deadlocks every
             // page behind it; make the mismatch observable in the reader log.
             logcat(LogPriority.INFO) {
                 "ImageEnhancer: Visible frame $pageIndex/$pageVariant does not match target " +
                     "$targetPageIndex/$targetPageVariant " +
                     "(secondary=$targetSecondaryPageIndex/$targetSecondaryPageVariant); queue stays held"
             }
-            // KMK <--
+            // VIEL <--
             return
         }
         waitingForVisibleImage = false
@@ -366,7 +367,7 @@ object ImageEnhancer {
         }
         queueSignal.trySend(Unit)
     }
-    // KMK <--
+    // VIEL <--
 
     @Synchronized
     fun cancelAll(reason: String = "cancelAll", resetNative: Boolean = true) {
@@ -442,7 +443,7 @@ object ImageEnhancer {
             activePageVariant == pageVariant
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Returns what the actively processed page is currently doing, or null when the page is not
      * the active request or its attempt was already cancelled. Null lets status polling fall
@@ -475,7 +476,7 @@ object ImageEnhancer {
             activePhase = phase
         }
     }
-    // KMK <--
+    // VIEL <--
 
     @Synchronized
     fun cancel(mangaId: Long, chapterId: Long, pageIndex: Int, pageVariant: String = "") {
@@ -540,10 +541,10 @@ object ImageEnhancer {
                 activePageIndex = req.pageIndex
                 activePageVariant = req.pageVariant
                 activeRequest = req
-                // KMK --> the claim starts a fresh attempt; the decoder advances the phase
+                // VIEL --> the claim starts a fresh attempt; the decoder advances the phase
                 // through ENHANCING and SAVING as it reaches those stages.
                 activePhase = ProcessingPhase.PREPARING
-                // KMK <--
+                // VIEL <--
                 nativeResetJob
             }
             // A reset must finish before this attempt can initialize a new model.
@@ -554,12 +555,12 @@ object ImageEnhancer {
             }
             val data = req.dataProvider()
             if (data == null) {
-                // KMK --> A dropped attempt must be observable: without this log a page
+                // VIEL --> A dropped attempt must be observable: without this log a page
                 // whose source vanished looks identical to one stuck in the queue.
                 logcat(LogPriority.WARN) {
                     "ImageEnhancer: Page ${req.pageIndex}/${req.pageVariant} has no readable source; dropping request"
                 }
-                // KMK <--
+                // VIEL <--
                 return
             }
             if (req.generation != generation.get() || req.cancelled.get()) return
@@ -567,10 +568,10 @@ object ImageEnhancer {
             if (req.cancelled.get()) return
             val request = ImageRequest.Builder(req.context)
                 .data(data)
-                // KMK --> hardware bitmaps cannot feed the native upscaler or the cache
+                // VIEL --> hardware bitmaps cannot feed the native upscaler or the cache
                 // encoder; force a software copy of the decoded page (upstream 1.3.17).
                 .allowHardware(false)
-                // KMK <--
+                // VIEL <--
                 .memoryCachePolicy(CachePolicy.DISABLED)
                 .customDecoder(true)
                 .enhanced(true)
@@ -591,7 +592,7 @@ object ImageEnhancer {
             }
             job.await()
         } catch (e: OutOfMemoryError) {
-            // KMK --> A page that exhausts memory is marked skipped so polling does not
+            // VIEL --> A page that exhausts memory is marked skipped so polling does not
             // retry it forever; the reader keeps showing the original image.
             if (req.generation == generation.get() && !req.cancelled.get()) {
                 ImageEnhancementCache.saveSkippedToCache(
@@ -603,7 +604,7 @@ object ImageEnhancer {
                 )
             }
             logcat(LogPriority.ERROR, e) { "ImageEnhancer: Keeping original after enhancement ran out of memory" }
-            // KMK <--
+            // VIEL <--
         } finally {
             synchronized(this) {
                 if (activeRequest === req) {
@@ -650,7 +651,7 @@ object ImageEnhancer {
         }
     }
 
-    // KMK -->
+    // VIEL -->
     private fun initializeRuntime(context: Context) {
         ImageEnhancementCache.init(context)
         if (!runtimeInitialized.compareAndSet(false, true)) return
@@ -684,10 +685,10 @@ object ImageEnhancer {
     private fun currentConfigHash(): String {
         return ImageEnhancementCache.getConfigHash(preferences)
     }
-    // KMK <--
+    // VIEL <--
 
     private fun preemptActiveRequestIfBehindTarget() {
-        // KMK --> Nearby work finishes and populates the cache during ordinary page turns;
+        // VIEL --> Nearby work finishes and populates the cache during ordinary page turns;
         // only a page left well behind the target is worth aborting (upstream 1.3.17).
         if (activePageIndex >= 0 && activePageIndex < targetPageIndex - 2 &&
             !isFocusedTarget(activePageIndex, activePageVariant)
@@ -700,10 +701,10 @@ object ImageEnhancer {
         if (activePageIndex >= 0 &&
             (activePageIndex != pageIndex || activePageVariant != pageVariant) &&
             !isFocusedTarget(activePageIndex, activePageVariant) &&
-            // KMK --> A request within a couple of pages of the visible one still serves an
+            // VIEL --> A request within a couple of pages of the visible one still serves an
             // imminent page turn; aborting it would discard work the reader needs next.
             kotlin.math.abs(activePageIndex - pageIndex) > 2
-            // KMK <--
+            // VIEL <--
         ) {
             preemptActiveRequest("visible page requested", requeue = activePageIndex > targetPageIndex)
         }

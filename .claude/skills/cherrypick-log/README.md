@@ -225,7 +225,7 @@ Tuning constants (similarity threshold, date limits, minimum title words, module
    target branch, start date (`since`, specific to that repo), excluded identities, output, and the optional path
    keys (excluded paths, repo-wide threshold, partial-pick paths).
 3. Add the remotes (`git remote add <name> <url>`) and run the script.
-4. Search `README.md` and `SKILL.md` for project-specific wording (mihon, SY, `// KMK` markers, `AGENTS.md`) and adjust it.
+4. Search `README.md` and `SKILL.md` for project-specific wording (mihon, SY, `// VIEL` / `// KMK` markers, `AGENTS.md`) and adjust it.
 
 The same applies to Komikku's sibling forks. The only hard requirement is that the fork records upstream picks
 with `git cherry-pick -x` (`cherry picked from commit …`) or `owner/repo#N` references in commit titles.

@@ -53,7 +53,7 @@ class PagerConfig(
     var landscapeZoom = false
         private set
 
-    // KMK -->
+    // VIEL -->
     var disableZoomIn = false
         private set
 
@@ -62,7 +62,7 @@ class PagerConfig(
 
     var landscapeZoomScaleType = LandscapeZoomScaleType.FIT
         private set
-    // KMK <--
+    // VIEL <--
 
     // SY -->
     var usePageTransitions = false
@@ -131,18 +131,18 @@ class PagerConfig(
             .onEach { navigationModeChangedListener?.invoke() }
             .launchIn(scope)
 
-        // KMK -->
+        // VIEL -->
         readerPreferences.smallerTapZone().changes()
             .drop(1)
             .onEach { updateNavigation(navigationMode) }
             .launchIn(scope)
-        // KMK <--
+        // VIEL <--
 
         readerPreferences.dualPageSplitPaged()
             .register(
                 {
                     dualPageSplit = it
-                    // KMK --> keep the split/merged-pages exclusivity symmetric: the
+                    // VIEL --> keep the split/merged-pages exclusivity symmetric: the
                     // initial value above and the page-layout listener both disable
                     // merged double pages while the split is on, but flipping the
                     // toggle at runtime left doublePages stale, so holders kept a
@@ -150,7 +150,7 @@ class PagerConfig(
                     if (!autoDoublePages) {
                         doublePages = readerPreferences.pageLayout().get() == PageLayout.DOUBLE_PAGES && !it
                     }
-                    // KMK <--
+                    // VIEL <--
                 },
                 {
                     imagePropertyChangedListener?.invoke()
@@ -177,7 +177,7 @@ class PagerConfig(
                 { imagePropertyChangedListener?.invoke() },
             )
 
-        // KMK -->
+        // VIEL -->
         readerPreferences.pagedDisableZoomIn()
             .register(
                 { disableZoomIn = it },
@@ -194,7 +194,7 @@ class PagerConfig(
                 { landscapeZoomScaleType = it },
                 { imagePropertyChangedListener?.invoke() },
             )
-        // KMK <--
+        // VIEL <--
 
         // SY -->
         readerPreferences.pageTransitionsPager()
@@ -224,7 +224,7 @@ class PagerConfig(
             .register({ invertDoublePages = it && dualPageSplit == false }, { imagePropertyChangedListener?.invoke() })
         // SY <--
 
-        // KMK --> Image enhancement (upscale) - refresh pages when changed
+        // VIEL --> Image enhancement (upscale) - refresh pages when changed
         readerPreferences.realCuganEnabled().changes()
             .drop(1)
             .onEach {
@@ -365,7 +365,7 @@ class PagerConfig(
                 imagePropertyChangedListener?.invoke()
             }
             .launchIn(scope)
-        // KMK <--
+        // VIEL <--
     }
 
     private fun zoomTypeFromPreference(value: Int) {

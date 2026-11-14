@@ -15,23 +15,23 @@ import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 
 class AppUpdateChecker(
-    // KMK -->
+    // VIEL -->
     private val peekIntoPreview: Boolean = false,
-    // KMK <--
+    // VIEL <--
 ) {
 
     private val getApplicationRelease: GetApplicationRelease by injectLazy()
 
-    // KMK -->
+    // VIEL -->
     private val exhPreferences by lazy { Injekt.get<ExhPreferences>() }
-    // KMK <--
+    // VIEL <--
 
     suspend fun checkForUpdate(
         context: Context,
         forceCheck: Boolean = false,
-        // KMK -->
+        // VIEL -->
         autoUpdate: Boolean = AppUpdatePolicy.DISABLE_AUTO_DOWNLOAD !in exhPreferences.appShouldAutoUpdate().get(),
-        // KMK <--
+        // VIEL <--
     ): GetApplicationRelease.Result {
         return withIOContext {
             val result = getApplicationRelease.await(
@@ -45,21 +45,21 @@ class AppUpdateChecker(
                 ),
             )
 
-            // KMK -->
+            // VIEL -->
             if (!peekIntoPreview) {
-                // KMK <--
+                // VIEL <--
                 when (result) {
                     is GetApplicationRelease.Result.NewUpdate -> {
-                        // KMK -->
+                        // VIEL -->
                         AppUpdateNotifier.releasePageUrl = result.release.releaseLink
-                        // KMK <--
+                        // VIEL <--
                         AppUpdateNotifier(context).promptUpdate(result.release)
                     }
 
                     else -> {}
                 }
 
-                // KMK -->
+                // VIEL -->
                 if (autoUpdate && result is GetApplicationRelease.Result.NewUpdate) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         AppUpdateDownloadJob.start(
@@ -70,14 +70,14 @@ class AppUpdateChecker(
                         )
                     }
                 }
-                // KMK <--
+                // VIEL <--
             }
 
             result
         }
     }
 
-    // KMK -->
+    // VIEL -->
     suspend fun getReleaseNotes(): GetApplicationRelease.Result {
         return withIOContext {
             getApplicationRelease.awaitReleaseNotes(
@@ -91,12 +91,12 @@ class AppUpdateChecker(
             )
         }
     }
-    // KMK <--
+    // VIEL <--
 }
 
 val GITHUB_REPO: String by lazy { getGithubRepo() }
 
-// KMK -->
+// VIEL -->
 /**
  * Repository that hosts the releases of the `viel` build, which is published by the
  * `Viel Builder` workflow (`.github/workflows/build_viel.yml`) of this fork.
@@ -111,7 +111,7 @@ fun getGithubRepo(peekIntoPreview: Boolean = false): String =
         isPreviewBuildType || peekIntoPreview -> "komikku-app/komikku-preview"
         else -> "komikku-app/komikku"
     }
-// KMK <--
+// VIEL <--
 
 val RELEASE_TAG: String by lazy { getReleaseTag() }
 

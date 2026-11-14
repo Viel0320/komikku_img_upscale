@@ -49,9 +49,9 @@ import uy.kohesive.injekt.api.get
 class WebtoonPageHolder(
     private val frame: ReaderPageImageView,
     viewer: WebtoonViewer,
-    // KMK -->
+    // VIEL -->
     @ColorInt private val seedColor: Int? = null,
-    // KMK <--
+    // VIEL <--
 ) : WebtoonBaseHolder(frame, viewer) {
 
     /**
@@ -101,12 +101,12 @@ class WebtoonPageHolder(
      */
     fun bind(page: ReaderPage) {
         this.page = page
-        // KMK -->
+        // VIEL -->
         frame.pageIndex = page.index
         frame.mangaId = viewer.activity.viewModel.manga?.id ?: -1L
         frame.chapterId = page.chapter.chapter.id ?: -1L
         frame.readerPage = page
-        // KMK <--
+        // VIEL <--
         loadJob?.cancel()
         loadJob = scope.launch { loadPageAndProcessStatus() }
         refreshLayoutParams()
@@ -205,7 +205,7 @@ class WebtoonPageHolder(
 
         try {
             val (source, isAnimated) = withIOContext {
-                // KMK --> Prefer the cached enhanced page when available (the transform in
+                // VIEL --> Prefer the cached enhanced page when available (the transform in
                 // [process] is re-applied on the enhanced image).
                 val page = page
                 val enhancedFile = if (page != null) currentEnhancedFile(page) else null
@@ -214,7 +214,7 @@ class WebtoonPageHolder(
                 } else {
                     streamFn().use { process(Buffer().readFrom(it)) }
                 }
-                // KMK <--
+                // VIEL <--
                 val isAnimated = ImageUtil.isAnimatedAndSupported(source)
                 Pair(source, isAnimated)
             }
@@ -256,7 +256,7 @@ class WebtoonPageHolder(
         return imageSource
     }
 
-    // KMK -->
+    // VIEL -->
     private val readerPreferences: ReaderPreferences by lazy { Injekt.get() }
 
     private fun currentEnhancedFile(targetPage: ReaderPage): java.io.File? {
@@ -267,7 +267,7 @@ class WebtoonPageHolder(
         val configHash = ImageEnhancementCache.getConfigHash(readerPreferences)
         return ImageEnhancementCache.getCachedImage(mangaId, chapterId, targetPage.index, configHash, targetPage.enhancementKeySuffix)
     }
-    // KMK <--
+    // VIEL <--
 
     private fun rotateDualPage(imageSource: BufferedSource): BufferedSource {
         val isDoublePage = ImageUtil.isWideImage(imageSource)
@@ -304,9 +304,9 @@ class WebtoonPageHolder(
 
         val progress = ReaderProgressIndicator(
             context,
-            // KMK -->
+            // VIEL -->
             seedColor = seedColor,
-            // KMK <--
+            // VIEL <--
         ).apply {
             updateLayoutParams<FrameLayout.LayoutParams> {
                 updateMargins(top = parentHeight / 4)

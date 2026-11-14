@@ -465,7 +465,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     }
                     if (chapterId == -1L) chapterId = initialChapterId
 
-                    // KMK -->
+                    // VIEL -->
                     // Anchor the enhancer at the page the reader will actually open first: a
                     // deeplink page, or the chapter's saved position. A reset anchored at 0
                     // leaves the first-frame gate waiting on page 0 while the first displayed
@@ -473,7 +473,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     eu.kanade.tachiyomi.util.waifu2x.ImageEnhancer.reset(
                         page ?: chapterList.first { chapterId == it.chapter.id }.chapter.last_page_read,
                     )
-                    // KMK <--
+                    // VIEL <--
 
                     val context = Injekt.get<Application>()
                     // val source = sourceManager.getOrStub(manga.source)
@@ -514,19 +514,19 @@ class ReaderViewModel @JvmOverloads constructor(
 
     // SY -->
     fun getChapters(): List<ReaderChapterItem> {
-        // KMK -->
+        // VIEL -->
         val manga = manga ?: return emptyList()
         val mangaList = state.value.mergedManga?.takeIf { it.isNotEmpty() } ?: mapOf(manga.id to manga)
-        // KMK <--
+        // VIEL <--
 
         val currentChapter = getCurrentChapter()
 
         return chapterList.map {
             ReaderChapterItem(
                 chapter = it.chapter.toDomainChapter()!!,
-                // KMK -->
+                // VIEL -->
                 manga = mangaList[it.chapter.manga_id] ?: manga,
-                // KMK <--
+                // VIEL <--
                 isCurrent = it.chapter.id == currentChapter?.chapter?.id,
                 dateFormat = UiPreferences.dateFormat(uiPreferences.dateFormat().get()),
             )
@@ -689,11 +689,11 @@ class ReaderViewModel @JvmOverloads constructor(
             return
         }
 
-        // KMK -->
+        // VIEL -->
         // Tell the loader which page is visible so it can prioritize its download; an
         // offscreen holder binding must not change that priority.
         page.chapter.pageLoader?.onPageSelected(page)
-        // KMK <--
+        // VIEL <--
 
         // SY -->
         mutableState.update { it.copy(currentPageText = currentPageText) }
@@ -728,20 +728,20 @@ class ReaderViewModel @JvmOverloads constructor(
         if (getCurrentChapter()?.pageLoader !is DownloadPageLoader) return
         val nextChapter = state.value.viewerChapters?.nextChapter?.chapter ?: return
 
-        // KMK -->
+        // VIEL -->
         val mangas = state.value.mergedManga ?: mapOf(manga.id to manga)
         val nextChapterManga = mangas[nextChapter.manga_id] ?: return
-        // KMK <--
+        // VIEL <--
 
         viewModelScope.launchIO {
             val isNextChapterDownloaded = downloadManager.isChapterDownloaded(
                 nextChapter.name,
                 nextChapter.scanlator,
                 nextChapter.url,
-                // KMK -->
+                // VIEL -->
                 nextChapterManga.ogTitle,
                 nextChapterManga.source,
-                // KMK <--
+                // VIEL <--
             )
             if (!isNextChapterDownloaded) return@launchIO
 
@@ -753,7 +753,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
             }.take(downloadAheadAmount)
 
-            // KMK -->
+            // VIEL -->
             chaptersToDownload.groupBy { it.mangaId }.forEach { (mangaId, chapters) ->
                 val chapterManga = mangas[mangaId] ?: return@forEach
                 downloadManager.downloadChapters(
@@ -761,7 +761,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapters,
                 )
             }
-            // KMK <--
+            // VIEL <--
         }
     }
 
@@ -799,7 +799,7 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
-    // KMK -->
+    // VIEL -->
     /**
      * Deletes duplicate chapters when `removeAfterReadSlots` = "Last read chapter" (0).
      *
@@ -814,7 +814,7 @@ class ReaderViewModel @JvmOverloads constructor(
         if (removeAfterReadSlots != 0) return
         enqueueDeleteReadChapters(chapterToDelete)
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Saves the chapter progress (last read page and whether it's read)
@@ -902,9 +902,9 @@ class ReaderViewModel @JvmOverloads constructor(
                     chapter.chapterNumber.toFloat() == readerChapter.chapter.chapter_number
                 ) {
                     ChapterUpdate(id = chapter.id, read = true)
-                        // KMK -->
+                        // VIEL -->
                         .also { deleteDupChapterIfNeeded(ReaderChapter(chapter.copy(read = true))) }
-                    // KMK <--
+                    // VIEL <--
                 } else {
                     null
                 }
@@ -1109,11 +1109,11 @@ class ReaderViewModel @JvmOverloads constructor(
     }
     // SY <--
 
-    // KMK -->
+    // VIEL -->
     fun toggleImageEnhancement(): Boolean {
         return readerPreferences.realCuganEnabled().toggle()
     }
-    // KMK <--
+    // VIEL <--
 
     /**
      * Generate a filename for the given [manga] and [page]
